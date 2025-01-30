@@ -29,6 +29,9 @@ RUN pip install comfy-cli
 # Install ComfyUI
 RUN /usr/bin/yes | comfy --workspace /comfyui install --cuda-version 11.8 --nvidia --version 0.2.7
 
+# Update huggingface hub
+RUN pip install -U huggingface_hub
+
 # Change working directory to ComfyUI
 WORKDIR /comfyui
 
@@ -42,11 +45,14 @@ ADD src/extra_model_paths.yaml ./
 WORKDIR /
 
 # Add scripts
-ADD src/start.sh src/restore_snapshot.sh src/rp_handler.py test_input.json ./
-RUN chmod +x /start.sh /restore_snapshot.sh
+ADD src/start.sh src/restore_snapshot.sh src/rp_handler.py test_input.json src/setup_custom_nodes.sh ./
+RUN chmod +x /start.sh /restore_snapshot.sh /setup_custom_nodes.sh
 
 # Optionally copy the snapshot file
 ADD *snapshot*.json /
+
+# Install custom nodes
+RUN /setup_custom_nodes.sh
 
 # Restore the snapshot to install custom nodes
 RUN /restore_snapshot.sh
@@ -83,6 +89,8 @@ RUN if [ "$MODEL_TYPE" = "sdxl" ]; then \
       wget -O models/clip/clip_l.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors && \
       wget -O models/clip/t5xxl_fp8_e4m3fn.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors && \
       wget --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/vae/ae.safetensors https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors; \
+    elif [ "$MODEL_TYPE" = "animaginexl" ]; then \
+      wget -O models/checkpoints/animagine-xl-3.1.safetensors https://huggingface.co/cagliostrolab/animagine-xl-3.1/resolve/main/animagine-xl-3.1.safetensors; \
     fi
 
 # Stage 3: Final image
