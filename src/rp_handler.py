@@ -2,7 +2,6 @@ import runpod
 from runpod.serverless.utils import rp_upload
 import json
 import urllib.request
-import urllib.parse
 import time
 import os
 import requests
@@ -14,14 +13,14 @@ COMFY_API_AVAILABLE_INTERVAL_MS = 50
 # Maximum number of API check attempts
 COMFY_API_AVAILABLE_MAX_RETRIES = 500
 # Time to wait between poll attempts in milliseconds
-COMFY_POLLING_INTERVAL_MS = int(os.environ.get("COMFY_POLLING_INTERVAL_MS", 250))
+COMFY_POLLING_INTERVAL_MS = int(os.environ["COMFY_POLLING_INTERVAL_MS"])
 # Maximum number of poll attempts
-COMFY_POLLING_MAX_RETRIES = int(os.environ.get("COMFY_POLLING_MAX_RETRIES", 500))
+COMFY_POLLING_MAX_RETRIES = int(os.environ["COMFY_POLLING_MAX_RETRIES"])
 # Host where ComfyUI is running
 COMFY_HOST = "127.0.0.1:8188"
 # Enforce a clean state after each job is done
 # see https://docs.runpod.io/docs/handler-additional-controls#refresh-worker
-REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
+REFRESH_WORKER = os.environ["REFRESH_WORKER"].lower() == "true"
 
 
 def validate_input(job_input):
@@ -230,7 +229,7 @@ def process_output_images(outputs, job_id):
     """
 
     # The path where ComfyUI stores the generated images
-    COMFY_OUTPUT_PATH = os.environ.get("COMFY_OUTPUT_PATH", "/comfyui/output")
+    COMFY_OUTPUT_PATH = os.environ["COMFY_OUTPUT_PATH"]
 
     output_images = {}
 
@@ -248,7 +247,7 @@ def process_output_images(outputs, job_id):
 
     # The image is in the output folder
     if os.path.exists(local_image_path):
-        if os.environ.get("BUCKET_ENDPOINT_URL", False):
+        if os.environ.get("BUCKET_ENDPOINT_URL"):
             # URL to image in AWS S3
             image = rp_upload.upload_image(job_id, local_image_path)
             print(
