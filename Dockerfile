@@ -31,12 +31,14 @@ ENV PYTHONUNBUFFERED=1
 ENV CMAKE_BUILD_PARALLEL_LEVEL=8
 
 # Install Python, git and other necessary tools
+# libglib2.0-0: provides libgthread-2.0.so.0 required by opencv (cv2) for Impact Pack / Subpack import
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
     git \
     wget \
     libgl1 \
+    libglib2.0-0 \
     build-essential \
     && ln -sf /usr/bin/python3.10 /usr/bin/python \
     && ln -sf /usr/bin/pip3 /usr/bin/pip
