@@ -30,8 +30,8 @@ _NODE_DIAGNOSTICS_LOGGED = False
 # Nodes required by Anifusion character_sheet workflow (MVAdapter + Impact Pack + core).
 _CHARACTER_SHEET_NODE_TYPES = (
     "LdmPipelineLoader",
-    "DiffusersSchedulerLoader",
-    "DiffusersModelMakeup",
+    "DiffusersMVSchedulerLoader",
+    "DiffusersMVModelMakeup",
     "DiffusersMVSampler",
     "FaceDetailer",
     "UltralyticsDetectorProvider",
@@ -64,10 +64,12 @@ def log_comfy_node_registry_once():
         missing = [n for n in _CHARACTER_SHEET_NODE_TYPES if n not in data]
         if missing:
             print(
-                "runpod-worker-comfy - HINT: MISSING usually means a custom node failed to import "
-                "(see ComfyUI stderr: Impact Main needs SCHEDULER_HANDLERS; use pinned Impact 8.9 with "
-                "ComfyUI 0.2.7). UltralyticsDetectorProvider requires ComfyUI-Impact-Subpack. "
-                "MVAdapter pins diffusers/transformers; numpy must stay <2 for Impact 8.x."
+                "runpod-worker-comfy - HINT: Check Comfy stderr above. Common fixes: (1) cv2/libgthread "
+                "error → image needs apt package libglib2.0-0. (2) SCHEDULER_HANDLERS → Impact Pack "
+                "must be tag 8.9 with ComfyUI 0.2.7, not Main. (3) UltralyticsDetectorProvider → "
+                "ComfyUI-Impact-Subpack. (4) App workflow must use MVAdapter v1.0.2 API names "
+                "DiffusersMVSchedulerLoader / DiffusersMVModelMakeup (not DiffusersSchedulerLoader). "
+                "(5) numpy<2 for Impact 8.x after MVAdapter pip."
             )
     except requests.RequestException as e:
         print(f"runpod-worker-comfy - object_info diagnostic failed: {e}")

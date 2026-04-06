@@ -68,4 +68,7 @@ print(
 )
 PY
 
+# OpenCV loads at Comfy startup for Impact Pack/Subpack; fail build if system libs missing (e.g. libgthread).
+python3 -c "import cv2; print('runpod-worker-comfy: cv2 OK', cv2.__version__)"
+
 echo "runpod-worker-comfy: character sheet custom nodes installed"

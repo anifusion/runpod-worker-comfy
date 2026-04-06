@@ -16,6 +16,10 @@ for name in ComfyUI-MVAdapter ComfyUI-Impact-Pack ComfyUI-Impact-Subpack; do
     echo "runpod-worker-comfy: MISSING directory: $name"
   fi
 done
+echo "runpod-worker-comfy: === OpenCV (Impact Pack / Subpack) ==="
+if ! python3 -c "import cv2; print('runpod-worker-comfy: cv2 import OK', cv2.__version__)"; then
+  echo "runpod-worker-comfy: ERROR: cv2 import failed — e.g. libgthread: add libglib2.0-0 to Dockerfile apt"
+fi
 echo "runpod-worker-comfy: === pip versions (MVAdapter-related) ==="
 for pkg in diffusers transformers torch huggingface-hub; do
   if pip show "$pkg" >/dev/null 2>&1; then
