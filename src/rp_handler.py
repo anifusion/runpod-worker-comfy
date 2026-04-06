@@ -1,6 +1,7 @@
 import runpod
 from runpod.serverless.utils import rp_upload
 import json
+import urllib.error
 import urllib.request
 import urllib.parse
 import time
@@ -22,6 +23,36 @@ COMFY_HOST = "127.0.0.1:8188"
 # Enforce a clean state after each job is done
 # see https://docs.runpod.io/docs/handler-additional-controls#refresh-worker
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
+
+
+def _format_comfy_prompt_error(body: dict) -> str:
+    """Flatten ComfyUI /prompt error JSON for logs and RunPod output."""
+    err = body.get("error")
+    if isinstance(err, dict):
+        parts = [
+            err.get("message"),
+            err.get("type"),
+            err.get("details"),
+        ]
+        text = "; ".join(str(p) for p in parts if p)
+        return (text or json.dumps(err))[:2000]
+    if err is not None:
+        return str(err)[:2000]
+    node_errors = body.get("node_errors")
+    if node_errors:
+        return json.dumps(node_errors)[:2000]
+    return json.dumps(body)[:2000]
+
+
+def _format_execution_status_error(status_obj: dict) -> str:
+    """Flatten ComfyUI history status when status_str is error."""
+    msgs = status_obj.get("messages")
+    if isinstance(msgs, list) and msgs:
+        try:
+            return json.dumps(msgs)[:2000]
+        except (TypeError, ValueError):
+            return str(msgs)[:2000]
+    return json.dumps(status_obj)[:2000]
 
 
 def validate_input(job_input):
@@ -155,20 +186,52 @@ def upload_images(images):
 
 def queue_workflow(workflow):
     """
-    Queue a workflow to be processed by ComfyUI
-
-    Args:
-        workflow (dict): A dictionary containing the workflow to be processed
+    Queue a workflow to be processed by ComfyUI.
 
     Returns:
-        dict: The JSON response from ComfyUI after processing the workflow
+        dict: Either ``{"prompt_id": "..."}`` on success or ``{"error": "..."}`` on validation/API failure.
     """
-
-    # The top level element "prompt" is required by ComfyUI
     data = json.dumps({"prompt": workflow}).encode("utf-8")
+    req = urllib.request.Request(
+        f"http://{COMFY_HOST}/prompt",
+        data=data,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req) as response:
+            raw = response.read()
+    except urllib.error.HTTPError as e:
+        raw = e.read() if e.fp else b"{}"
+        try:
+            body = json.loads(raw)
+        except json.JSONDecodeError:
+            return {
+                "error": f"ComfyUI /prompt failed (HTTP {e.code}): {raw.decode(errors='replace')[:800]}"
+            }
+        if isinstance(body, dict):
+            return {"error": _format_comfy_prompt_error(body)}
+        return {"error": raw.decode(errors="replace")[:800]}
 
-    req = urllib.request.Request(f"http://{COMFY_HOST}/prompt", data=data)
-    return json.loads(urllib.request.urlopen(req).read())
+    try:
+        body = json.loads(raw)
+    except json.JSONDecodeError:
+        return {
+            "error": f"ComfyUI /prompt returned non-JSON: {raw.decode(errors='replace')[:500]}"
+        }
+
+    if not isinstance(body, dict):
+        return {"error": f"ComfyUI /prompt unexpected response: {str(body)[:500]}"}
+
+    if body.get("error") is not None:
+        return {"error": _format_comfy_prompt_error(body)}
+
+    prompt_id = body.get("prompt_id")
+    if not prompt_id:
+        return {
+            "error": f"ComfyUI /prompt missing prompt_id; response: {json.dumps(body)[:800]}"
+        }
+
+    return {"prompt_id": prompt_id}
 
 
 def get_history(prompt_id):
@@ -320,6 +383,10 @@ def handler(job):
     # Queue the workflow
     try:
         queued_workflow = queue_workflow(workflow)
+        if "error" in queued_workflow:
+            err = queued_workflow["error"]
+            print(f"runpod-worker-comfy - queue_workflow error: {err}")
+            return {"error": err}
         prompt_id = queued_workflow["prompt_id"]
         print(f"runpod-worker-comfy - queued workflow with ID {prompt_id}")
     except Exception as e:
@@ -332,13 +399,18 @@ def handler(job):
         while retries < COMFY_POLLING_MAX_RETRIES:
             history = get_history(prompt_id)
 
-            # Exit the loop if we have found the history
-            if prompt_id in history and history[prompt_id].get("outputs"):
-                break
-            else:
-                # Wait before trying again
-                time.sleep(COMFY_POLLING_INTERVAL_MS / 1000)
-                retries += 1
+            if isinstance(history, dict) and prompt_id in history:
+                entry = history[prompt_id]
+                status_obj = entry.get("status")
+                if isinstance(status_obj, dict) and status_obj.get("status_str") == "error":
+                    detail = _format_execution_status_error(status_obj)
+                    print(f"runpod-worker-comfy - ComfyUI execution error: {detail}")
+                    return {"error": f"ComfyUI workflow failed: {detail}"}
+                if entry.get("outputs"):
+                    break
+
+            time.sleep(COMFY_POLLING_INTERVAL_MS / 1000)
+            retries += 1
         else:
             return {"error": "Max retries reached while waiting for image generation"}
     except Exception as e:

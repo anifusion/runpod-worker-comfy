@@ -118,11 +118,11 @@ RunPod can connect a **GitHub repo** and run `docker build` from the repo root, 
 
 | Build argument | Default in Dockerfile | When to change |
 | -------------- | --------------------- | ---------------- |
-| `MODEL_TYPE` | `sdxl` | Use `character-sheet` for Anifusion character sheets; or `sd3`, `flux1-schnell`, `flux1-dev` for those stacks. |
-| `WITH_CHARACTER_SHEET_NODES` | `false` | Set to `true` **with** `MODEL_TYPE=character-sheet` (installs ComfyUI-MVAdapter + Impact Pack). |
+| `MODEL_TYPE` | `character-sheet` | Bundles animagine-xl-3.1, sdxl-vae-fp16-fix, 4x-UltraSharp, face_yolov8m. Use `sdxl`, `sd3`, `flux1-schnell`, or `flux1-dev` for other stacks. |
+| `WITH_CHARACTER_SHEET_NODES` | `true` | Installs ComfyUI-MVAdapter + Impact Pack (required for Anifusion character-sheet workflows). Set to `false` only if you want a slimmer image and will not run those nodes. |
 | `HUGGINGFACE_ACCESS_TOKEN` | _(empty)_ | Required for `MODEL_TYPE=sd3` or `flux1-dev` downloads from Hugging Face. |
 
-Without passing `MODEL_TYPE`, the image now defaults to **SDXL** checkpoints (older behavior left it empty and downloaded **no** models). For **Anifusion** `workflow.json` (MV-Adapter + FaceDetailer), you must use **`character-sheet`** + **`WITH_CHARACTER_SHEET_NODES=true`** and allow enough **container build disk** (on the order of tens of GB).
+A plain **`docker build`** (no args) targets the **Anifusion character-sheet** model bundle plus MV-Adapter nodes. Allow enough **container build disk** (on the order of tens of GB). For **stock SDXL** weights only, pass **`--build-arg MODEL_TYPE=sdxl`**.
 
 ### Create your template (optional)
 
@@ -476,25 +476,31 @@ docker-compose up
 
 ## Automatically deploy to Docker hub with GitHub Actions
 
-The repo contains two workflows that publish the image to Docker hub using GitHub Actions:
+The repo contains workflows that publish images to Docker Hub using GitHub Actions:
 
-- [dev.yml](.github/workflows/dev.yml): Creates the image and pushes it to Docker hub with the `dev` tag on every push to the `main` branch
-- [release.yml](.github/workflows/release.yml): Creates the image and pushes it to Docker hub with the `latest` and the release tag. It will only be triggered when you create a release on GitHub
+- [dev.yml](.github/workflows/dev.yml): Builds and pushes on pushes to branches **other than** `main` (branch name is reflected in tags).
+- [release.yml](.github/workflows/release.yml): On pushes to `main`, runs semantic-release; when a new release is published, builds and pushes versioned tags via `docker/bake-action` (all targets in [docker-bake.hcl](docker-bake.hcl), including `character-sheet`).
+- [test.yml](.github/workflows/test.yml): Python and snapshot tests (no registry push).
 
-If you want to use this, you should add these **secrets** to your repository:
+**`dev.yml` / `release.yml` runners** use `runs-on: ubuntu-latest-l` (large disk). If your org does not provide that label, change the workflow to `ubuntu-latest` and ensure enough free disk for multi-image bakes (or clear space as the workflows already do).
 
-| Configuration Variable     | Description                               | Example Value       |
-| -------------------------- | ----------------------------------------- | ------------------- |
-| `DOCKERHUB_USERNAME`       | Your Docker Hub username.                 | `your-username`     |
-| `DOCKERHUB_TOKEN`          | Your Docker Hub token for authentication. | `your-token`        |
-| `HUGGINGFACE_ACCESS_TOKEN` | Your READ access token from Hugging Face  | `your-access-token` |
+If you want to use the publish workflows, add these **secrets** to your repository:
 
-And also make sure to add these **variables** to your repository:
+| Secret | Description | Example |
+| ------ | ----------- | ------- |
+| `DOCKERHUB_USERNAME` | Docker Hub username | `your-username` |
+| `DOCKERHUB_TOKEN` | Docker Hub access token | `your-token` |
+| `HUGGINGFACE_ACCESS_TOKEN` | Hugging Face read token (for `sd3` / `flux1-dev` bake targets) | `hf_...` |
+| `BLIBLA_SEMANTIC_RELEASE` | GitHub token for [semantic-release](https://github.com/codfish/semantic-release-action) on `main` (contents/issues/PRs) | PAT or `GITHUB_TOKEN` with sufficient scope |
 
-| Variable Name    | Description                                                  | Example Value         |
-| ---------------- | ------------------------------------------------------------ | --------------------- |
-| `DOCKERHUB_REPO` | The repository on Docker Hub where the image will be pushed. | `timpietruskyblibla`  |
-| `DOCKERHUB_IMG`  | The name of the image to be pushed to Docker Hub.            | `runpod-worker-comfy` |
+**Repository variables:**
+
+| Variable | Description | Example |
+| -------- | ----------- | ------- |
+| `DOCKERHUB_REPO` | Docker Hub namespace / org | `timpietruskyblibla` |
+| `DOCKERHUB_IMG` | Image name | `runpod-worker-comfy` |
+
+**Not used by this repo:** `GH_PAT`, `RUNPOD_API_KEY`, and `RUNNER_24GB` do not appear in these workflows. Publishing goes to **Docker Hub** only; RunPod pulls the image by tag—no RunPod API key is required for CI. (Your **Anifusion app** uses `RUNPOD_API_KEY` separately when calling RunPod from the server.)
 
 ## Acknowledgments
 

@@ -15,7 +15,7 @@ variable "HUGGINGFACE_ACCESS_TOKEN" {
 }
 
 group "default" {
-  targets = ["base", "sdxl", "sd3", "flux1-schnell", "flux1-dev"]
+  targets = ["base", "sdxl", "sd3", "flux1-schnell", "flux1-dev", "character-sheet"]
 }
 
 target "base" {
@@ -74,13 +74,14 @@ target "flux1-dev" {
 }
 
 # Anifusion character sheets: MV-Adapter + Impact Pack + animagine-xl / upscaler / face detector (~7GB+ checkpoint)
+# WITH_CHARACTER_SHEET_NODES defaults to true in Dockerfile; kept explicit for clarity.
 target "character-sheet" {
   context = "."
   dockerfile = "Dockerfile"
   target = "final"
   args = {
-    MODEL_TYPE              = "character-sheet"
-    WITH_CHARACTER_SHEET_NODES = "true"
+    MODEL_TYPE                 = "character-sheet"
+    WITH_CHARACTER_SHEET_NODES   = "true"
   }
   tags = ["${DOCKERHUB_REPO}/${DOCKERHUB_IMG}:${RELEASE_VERSION}-character-sheet"]
   inherits = ["base"]

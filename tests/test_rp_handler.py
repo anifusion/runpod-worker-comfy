@@ -81,11 +81,32 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
     @patch("rp_handler.urllib.request.urlopen")
     def test_queue_prompt(self, mock_urlopen):
-        mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({"prompt_id": "123"}).encode()
-        mock_urlopen.return_value = mock_response
+        mock_cm = MagicMock()
+        mock_cm.read.return_value = json.dumps({"prompt_id": "123"}).encode()
+        mock_cm.__enter__.return_value = mock_cm
+        mock_cm.__exit__.return_value = None
+        mock_urlopen.return_value = mock_cm
         result = rp_handler.queue_workflow({"prompt": "test"})
         self.assertEqual(result, {"prompt_id": "123"})
+
+    @patch("rp_handler.urllib.request.urlopen")
+    def test_queue_prompt_returns_error_when_comfy_reports_invalid_prompt(self, mock_urlopen):
+        mock_cm = MagicMock()
+        mock_cm.read.return_value = json.dumps(
+            {
+                "error": {
+                    "type": "invalid_prompt",
+                    "message": "Cannot execute because node LdmPipelineLoader does not exist.",
+                    "details": "Node ID '#1'",
+                }
+            }
+        ).encode()
+        mock_cm.__enter__.return_value = mock_cm
+        mock_cm.__exit__.return_value = None
+        mock_urlopen.return_value = mock_cm
+        result = rp_handler.queue_workflow({"1": {"class_type": "Missing"}})
+        self.assertIn("error", result)
+        self.assertIn("LdmPipelineLoader", result["error"])
 
     @patch("rp_handler.urllib.request.urlopen")
     def test_get_history(self, mock_urlopen):
