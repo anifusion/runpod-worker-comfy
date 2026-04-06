@@ -17,6 +17,9 @@ ARG WITH_CHARACTER_SHEET_NODES=true
 # Pin ComfyUI-MVAdapter to a release tag by default (reproducible; main can break ComfyUI 0.2.7).
 # Override with --build-arg COMFYUI_MV_ADAPTER_REF=main to track upstream.
 ARG COMFYUI_MV_ADAPTER_REF=v1.0.2
+# Impact Pack Main requires newer ComfyUI (SCHEDULER_HANDLERS); 8.9 matches ComfyUI 0.2.7.
+# Override with --build-arg COMFYUI_IMPACT_PACK_REF=Main after upgrading comfy-cli --version.
+ARG COMFYUI_IMPACT_PACK_REF=8.9
 
 # Prevents prompts from packages asking for user input during installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -53,7 +56,9 @@ WORKDIR /comfyui
 COPY src/install_character_sheet_custom_nodes.sh /tmp/install_character_sheet_custom_nodes.sh
 RUN chmod +x /tmp/install_character_sheet_custom_nodes.sh && \
     if [ "$WITH_CHARACTER_SHEET_NODES" = "true" ]; then \
-      COMFYUI_MV_ADAPTER_REF="$COMFYUI_MV_ADAPTER_REF" /tmp/install_character_sheet_custom_nodes.sh; \
+      COMFYUI_MV_ADAPTER_REF="$COMFYUI_MV_ADAPTER_REF" \
+      COMFYUI_IMPACT_PACK_REF="$COMFYUI_IMPACT_PACK_REF" \
+      /tmp/install_character_sheet_custom_nodes.sh; \
     fi
 
 # Install runpod

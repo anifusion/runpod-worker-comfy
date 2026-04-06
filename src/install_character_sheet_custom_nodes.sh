@@ -3,6 +3,11 @@
 # - ComfyUI-MVAdapter: LdmPipelineLoader, Diffusers*, multi-view sampling
 # - ComfyUI-Impact-Pack: FaceDetailer, UltralyticsDetectorProvider
 #
+# Impact Pack `Main` (e.g. 8.28+) uses comfy.samplers.SCHEDULER_HANDLERS, which does not exist on
+# ComfyUI 0.2.7 (comfy-cli --version 0.2.7) — import fails with AttributeError and FaceDetailer
+# never registers. Pin COMFYUI_IMPACT_PACK_REF to tag 8.9 (or similar) for 0.2.7; bump ComfyUI
+# before tracking Impact Main again.
+#
 # Install order: Impact Pack *before* MVAdapter pip deps, then MVAdapter requirements *last*.
 # Impact Pack lists unpinned "transformers" etc.; installing it after MVAdapter can override
 # MVAdapter's pins (transformers==4.46.3, diffusers==0.31.0) and break imports — see
@@ -25,8 +30,10 @@ if [[ ! -d ComfyUI-MVAdapter ]]; then
   fi
 fi
 
+# Default 8.9 via Dockerfile ARG; use Main only with a newer ComfyUI than 0.2.7.
+IMPACT_REF="${COMFYUI_IMPACT_PACK_REF:-8.9}"
 if [[ ! -d ComfyUI-Impact-Pack ]]; then
-  git clone --depth 1 --branch Main --single-branch \
+  git clone --depth 1 --branch "$IMPACT_REF" --single-branch \
     https://github.com/ltdrdata/ComfyUI-Impact-Pack.git
 fi
 
