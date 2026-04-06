@@ -14,6 +14,9 @@ FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 as base
 
 # When true, installs ComfyUI-MVAdapter + Impact Pack (Anifusion character sheets).
 ARG WITH_CHARACTER_SHEET_NODES=true
+# Pin ComfyUI-MVAdapter to a release tag by default (reproducible; main can break ComfyUI 0.2.7).
+# Override with --build-arg COMFYUI_MV_ADAPTER_REF=main to track upstream.
+ARG COMFYUI_MV_ADAPTER_REF=v1.0.2
 
 # Prevents prompts from packages asking for user input during installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -50,7 +53,7 @@ WORKDIR /comfyui
 COPY src/install_character_sheet_custom_nodes.sh /tmp/install_character_sheet_custom_nodes.sh
 RUN chmod +x /tmp/install_character_sheet_custom_nodes.sh && \
     if [ "$WITH_CHARACTER_SHEET_NODES" = "true" ]; then \
-      /tmp/install_character_sheet_custom_nodes.sh; \
+      COMFYUI_MV_ADAPTER_REF="$COMFYUI_MV_ADAPTER_REF" /tmp/install_character_sheet_custom_nodes.sh; \
     fi
 
 # Install runpod
@@ -63,8 +66,8 @@ ADD src/extra_model_paths.yaml ./
 WORKDIR /
 
 # Add scripts
-COPY src/start.sh src/restore_snapshot.sh src/rp_handler.py test_input.json ./
-RUN chmod +x /start.sh /restore_snapshot.sh
+COPY src/start.sh src/diagnose_custom_nodes_env.sh src/restore_snapshot.sh src/rp_handler.py test_input.json ./
+RUN chmod +x /start.sh /diagnose_custom_nodes_env.sh /restore_snapshot.sh
 
 # Optional ComfyUI Manager snapshot (see snapshots/README.md)
 COPY snapshots/ /snapshots-build/

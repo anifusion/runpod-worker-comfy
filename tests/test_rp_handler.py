@@ -64,8 +64,9 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertIsNotNone(error)
         self.assertEqual(error, "Please provide input")
 
+    @patch.object(rp_handler, "log_comfy_node_registry_once")
     @patch("rp_handler.requests.get")
-    def test_check_server_server_up(self, mock_requests):
+    def test_check_server_server_up(self, mock_requests, _mock_log_nodes):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_requests.return_value = mock_response

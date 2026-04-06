@@ -24,6 +24,55 @@ COMFY_HOST = "127.0.0.1:8188"
 # see https://docs.runpod.io/docs/handler-additional-controls#refresh-worker
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 
+# Logged once per worker process after Comfy responds; shows up in RunPod logs / job output.
+_NODE_DIAGNOSTICS_LOGGED = False
+
+# Nodes required by Anifusion character_sheet workflow (MVAdapter + Impact Pack + core).
+_CHARACTER_SHEET_NODE_TYPES = (
+    "LdmPipelineLoader",
+    "DiffusersSchedulerLoader",
+    "DiffusersModelMakeup",
+    "DiffusersMVSampler",
+    "FaceDetailer",
+    "UltralyticsDetectorProvider",
+)
+
+
+def log_comfy_node_registry_once():
+    """
+    Query ComfyUI /object_info once and print whether critical custom nodes registered.
+    If MVAdapter fails to import, these types are absent even when the directory exists on disk.
+    """
+    global _NODE_DIAGNOSTICS_LOGGED
+    if _NODE_DIAGNOSTICS_LOGGED:
+        return
+    _NODE_DIAGNOSTICS_LOGGED = True
+    url = f"http://{COMFY_HOST}/object_info"
+    try:
+        response = requests.get(url, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            print(f"runpod-worker-comfy - object_info: unexpected JSON type {type(data)}")
+            return
+        print(
+            f"runpod-worker-comfy - object_info: {len(data)} node type(s) registered"
+        )
+        for name in _CHARACTER_SHEET_NODE_TYPES:
+            status = "PRESENT" if name in data else "MISSING"
+            print(f"runpod-worker-comfy - object_info node {name!r}: {status}")
+        missing = [n for n in _CHARACTER_SHEET_NODE_TYPES if n not in data]
+        if missing:
+            print(
+                "runpod-worker-comfy - HINT: MISSING usually means the custom node package "
+                "failed to import (check ComfyUI stderr above) or ComfyUI-MVAdapter/Impact-Pack "
+                "is incompatible with this ComfyUI build. Dockerfile pins ComfyUI via "
+                "comfy-cli --version 0.2.7 while MVAdapter is cloned from default branch at "
+                "image build time — pin ComfyUI-MVAdapter to a known git ref if imports break."
+            )
+    except requests.RequestException as e:
+        print(f"runpod-worker-comfy - object_info diagnostic failed: {e}")
+
 
 def _format_comfy_prompt_error(body: dict) -> str:
     """Flatten ComfyUI /prompt error JSON for logs and RunPod output."""
@@ -117,6 +166,7 @@ def check_server(url, retries=500, delay=50):
             # If the response status code is 200, the server is up and running
             if response.status_code == 200:
                 print(f"runpod-worker-comfy - API is reachable")
+                log_comfy_node_registry_once()
                 return True
         except requests.RequestException as e:
             # If an exception occurs, the server may not be ready
