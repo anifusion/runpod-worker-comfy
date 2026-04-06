@@ -73,3 +73,16 @@ target "flux1-dev" {
   inherits = ["base"]
 }
 
+# Anifusion character sheets: MV-Adapter + Impact Pack + animagine-xl / upscaler / face detector (~7GB+ checkpoint)
+target "character-sheet" {
+  context = "."
+  dockerfile = "Dockerfile"
+  target = "final"
+  args = {
+    MODEL_TYPE              = "character-sheet"
+    WITH_CHARACTER_SHEET_NODES = "true"
+  }
+  tags = ["${DOCKERHUB_REPO}/${DOCKERHUB_IMG}:${RELEASE_VERSION}-character-sheet"]
+  inherits = ["base"]
+}
+

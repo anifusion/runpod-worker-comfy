@@ -1,5 +1,16 @@
+# Multi-stage image: default `docker build` / RunPod "build from Git" uses the last stage (`final`).
+# Downloader stage ARG MODEL_TYPE (below) must have a default or RunPod/GitHub builds ship ComfyUI with no checkpoints.
+#
+# RunPod GitHub build — Anifusion character sheets: set build args
+#   MODEL_TYPE=character-sheet
+#   WITH_CHARACTER_SHEET_NODES=true
+# Optional for sd3 / flux1-dev: HUGGINGFACE_ACCESS_TOKEN
+
 # Stage 1: Base image with common dependencies
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 as base
+
+# When true, installs ComfyUI-MVAdapter + Impact Pack (Anifusion character sheets).
+ARG WITH_CHARACTER_SHEET_NODES=false
 
 # Prevents prompts from packages asking for user input during installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -17,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     git \
     wget \
     libgl1 \
+    build-essential \
     && ln -sf /usr/bin/python3.10 /usr/bin/python \
     && ln -sf /usr/bin/pip3 /usr/bin/pip
 
@@ -32,6 +44,12 @@ RUN /usr/bin/yes | comfy --workspace /comfyui install --cuda-version 11.8 --nvid
 # Change working directory to ComfyUI
 WORKDIR /comfyui
 
+COPY src/install_character_sheet_custom_nodes.sh /tmp/install_character_sheet_custom_nodes.sh
+RUN chmod +x /tmp/install_character_sheet_custom_nodes.sh && \
+    if [ "$WITH_CHARACTER_SHEET_NODES" = "true" ]; then \
+      /tmp/install_character_sheet_custom_nodes.sh; \
+    fi
+
 # Install runpod
 RUN pip install runpod requests
 
@@ -42,13 +60,17 @@ ADD src/extra_model_paths.yaml ./
 WORKDIR /
 
 # Add scripts
-ADD src/start.sh src/restore_snapshot.sh src/rp_handler.py test_input.json ./
+COPY src/start.sh src/restore_snapshot.sh src/rp_handler.py test_input.json ./
 RUN chmod +x /start.sh /restore_snapshot.sh
 
-# Optionally copy the snapshot file
-ADD *snapshot*.json /
+# Optional ComfyUI Manager snapshot (see snapshots/README.md)
+COPY snapshots/ /snapshots-build/
+# POSIX /bin/sh: avoid relying on ls + glob exit status; copy first matching JSON if any
+RUN for f in /snapshots-build/*snapshot*.json; do \
+      if [ -f "$f" ]; then cp "$f" / && break; fi; \
+    done
 
-# Restore the snapshot to install custom nodes
+# Restore the snapshot to install custom nodes (no-op if no snapshot file in /)
 RUN /restore_snapshot.sh
 
 # Start container
@@ -58,19 +80,32 @@ CMD ["/start.sh"]
 FROM base as downloader
 
 ARG HUGGINGFACE_ACCESS_TOKEN
-ARG MODEL_TYPE
+# Default matches pre-built `-sdxl` image; override for character-sheet / flux / sd3 (see README).
+ARG MODEL_TYPE=sdxl
 
 # Change working directory to ComfyUI
 WORKDIR /comfyui
 
-# Create necessary directories
-RUN mkdir -p models/checkpoints models/vae
+# Create necessary directories (unet/clip required for flux targets; rest for sdxl / character-sheet)
+RUN mkdir -p models/checkpoints models/vae models/unet models/clip \
+    models/upscale_models models/ultralytics/bbox
+
+# character-sheet must be built with WITH_CHARACTER_SHEET_NODES=true on base (same docker build)
+RUN if [ "$MODEL_TYPE" = "character-sheet" ] && [ ! -d /comfyui/custom_nodes/ComfyUI-MVAdapter ]; then \
+      echo "ERROR: MODEL_TYPE=character-sheet requires --build-arg WITH_CHARACTER_SHEET_NODES=true (ComfyUI-MVAdapter missing)." >&2; \
+      exit 1; \
+    fi
 
 # Download checkpoints/vae/LoRA to include in image based on model type
 RUN if [ "$MODEL_TYPE" = "sdxl" ]; then \
       wget -O models/checkpoints/sd_xl_base_1.0.safetensors https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors && \
       wget -O models/vae/sdxl_vae.safetensors https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors && \
       wget -O models/vae/sdxl-vae-fp16-fix.safetensors https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors; \
+    elif [ "$MODEL_TYPE" = "character-sheet" ]; then \
+      wget -O models/checkpoints/animagine-xl-3.1.safetensors https://huggingface.co/cagliostrolab/animagine-xl-3.1/resolve/main/animagine-xl-3.1.safetensors && \
+      wget -O models/vae/sdxl-vae-fp16-fix.safetensors https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors && \
+      wget -O models/upscale_models/4x-UltraSharp.pth https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.pth && \
+      wget -O models/ultralytics/bbox/face_yolov8m.pt https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8m.pt; \
     elif [ "$MODEL_TYPE" = "sd3" ]; then \
       wget --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/checkpoints/sd3_medium_incl_clips_t5xxlfp8.safetensors https://huggingface.co/stabilityai/stable-diffusion-3-medium/resolve/main/sd3_medium_incl_clips_t5xxlfp8.safetensors; \
     elif [ "$MODEL_TYPE" = "flux1-schnell" ]; then \

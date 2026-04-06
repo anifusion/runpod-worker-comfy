@@ -107,13 +107,30 @@ This is only needed if you want to upload the generated picture to AWS S3. If yo
 
 ## Use the Docker image on RunPod
 
+### Build from GitHub repository (RunPod)
+
+RunPod can connect a **GitHub repo** and run `docker build` from the repo root, similar in spirit to workers like **`runpod-worker-kohya`** (single Dockerfile, no `docker-bake` in CI).
+
+- **Dockerfile:** `Dockerfile` at repository root (default).
+- **Target:** omit or set `final` (the last stage; that is what a plain `docker build` uses).
+
+**Build arguments** (set in the RunPod template / build settings when not using pre-pushed Hub tags):
+
+| Build argument | Default in Dockerfile | When to change |
+| -------------- | --------------------- | ---------------- |
+| `MODEL_TYPE` | `sdxl` | Use `character-sheet` for Anifusion character sheets; or `sd3`, `flux1-schnell`, `flux1-dev` for those stacks. |
+| `WITH_CHARACTER_SHEET_NODES` | `false` | Set to `true` **with** `MODEL_TYPE=character-sheet` (installs ComfyUI-MVAdapter + Impact Pack). |
+| `HUGGINGFACE_ACCESS_TOKEN` | _(empty)_ | Required for `MODEL_TYPE=sd3` or `flux1-dev` downloads from Hugging Face. |
+
+Without passing `MODEL_TYPE`, the image now defaults to **SDXL** checkpoints (older behavior left it empty and downloaded **no** models). For **Anifusion** `workflow.json` (MV-Adapter + FaceDetailer), you must use **`character-sheet`** + **`WITH_CHARACTER_SHEET_NODES=true`** and allow enough **container build disk** (on the order of tens of GB).
+
 ### Create your template (optional)
 
 - Create a [new template](https://runpod.io/console/serverless/user/templates) by clicking on `New Template`
 - In the dialog, configure:
   - Template Name: `runpod-worker-comfy` (it can be anything you want)
   - Template Type: serverless (change template type to "serverless")
-  - Container Image: `<dockerhub_username>/<repository_name>:tag`, in this case: `timpietruskyblibla/runpod-worker-comfy:3.4.0-sd3` (or `-base` for a clean image or `-sdxl` for Stable Diffusion XL or `-flex1-schnell` for FLUX.1 schnell)
+  - Container Image: `<dockerhub_username>/<repository_name>:tag`, in this case: `timpietruskyblibla/runpod-worker-comfy:3.4.0-sd3` (or `-base` for a clean image or `-sdxl` for Stable Diffusion XL or `-flux1-schnell` for FLUX.1 schnell)
   - Container Registry Credentials: You can leave everything as it is, as this repo is public
   - Container Disk: `20 GB`
   - (optional) Environment Variables: [Configure S3](#upload-image-to-aws-s3)
@@ -140,12 +157,13 @@ This is only needed if you want to upload the generated picture to AWS S3. If yo
 
 ### GPU recommendations
 
-| Model                     | Image           | Minimum VRAM Required | Container Size |
-| ------------------------- | --------------- | --------------------- | -------------- |
-| Stable Diffusion XL       | `sdxl`          | 8 GB                  | 15 GB          |
-| Stable Diffusion 3 Medium | `sd3`           | 5 GB                  | 20 GB          |
-| FLUX.1 Schnell            | `flux1-schnell` | 24 GB                 | 30 GB          |
-| FLUX.1 dev                | `flux1-dev`     | 24 GB                 | 30 GB          |
+| Model                     | Image               | Minimum VRAM Required | Container Size |
+| ------------------------- | ------------------- | --------------------- | -------------- |
+| Stable Diffusion XL       | `sdxl`              | 8 GB                  | 15 GB          |
+| Stable Diffusion 3 Medium | `sd3`               | 5 GB                  | 20 GB          |
+| FLUX.1 Schnell            | `flux1-schnell`     | 24 GB                 | 30 GB          |
+| FLUX.1 dev                | `flux1-dev`         | 24 GB                 | 30 GB          |
+| Anifusion character sheet | `character-sheet`   | 24 GB                 | 50 GB          |
 
 ## API specification
 
@@ -317,7 +335,7 @@ To include custom nodes in your Docker image:
    2. Create a new snapshot by clicking on "Save snapshot"
    3. Get the `*_snapshot.json` from your ComfyUI: `ComfyUI/custom_nodes/ComfyUI-Manager/snapshots`
 
-2. Save the snapshot file in the root directory of the project
+2. Save the snapshot JSON under the `snapshots/` directory (any filename matching `*snapshot*.json`; the first match is used)
 3. The snapshot will be automatically restored during the Docker build process, see [Building the Image](#building-the-image)
 
 > [!NOTE]
@@ -338,10 +356,22 @@ docker build --build-arg MODEL_TYPE=sdxl -t <your_dockerhub_username>/runpod-wor
 
 # Build the SD3 image
 docker build --build-arg MODEL_TYPE=sd3 --build-arg HUGGINGFACE_ACCESS_TOKEN=<your-huggingface-token> -t <your_dockerhub_username>/runpod-worker-comfy:dev-sd3 --platform linux/amd64 .
+
+# Anifusion character sheets (ComfyUI-MVAdapter + Impact Pack + animagine-xl / upscaler / face YOLO)
+docker build \
+  --build-arg WITH_CHARACTER_SHEET_NODES=true \
+  --build-arg MODEL_TYPE=character-sheet \
+  -t <your_dockerhub_username>/runpod-worker-comfy:dev-character-sheet \
+  --platform linux/amd64 \
+  --target final .
 ```
 
-> [!NOTE]  
-> Ensure to specify `--platform linux/amd64` to avoid errors on RunPod, see [issue #13](https://github.com/blib-la/runpod-worker-comfy/issues/13)
+Or with bake: `docker buildx bake character-sheet`.
+
+> [!NOTE]
+>
+> - **Character-sheet:** You must pass **both** `WITH_CHARACTER_SHEET_NODES=true` and `MODEL_TYPE=character-sheet` in a single `docker build`. The Dockerfile fails fast in the model stage if MV-Adapter is missing.
+> - Ensure `--platform linux/amd64` for RunPod, see [issue #13](https://github.com/blib-la/runpod-worker-comfy/issues/13)
 
 ## Local testing
 
