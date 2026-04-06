@@ -9,7 +9,7 @@ fi
 find /comfyui/custom_nodes -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort | while read -r p; do
   echo "runpod-worker-comfy:   $(basename "$p")"
 done
-for name in ComfyUI-MVAdapter ComfyUI-Impact-Pack; do
+for name in ComfyUI-MVAdapter ComfyUI-Impact-Pack ComfyUI-Impact-Subpack; do
   if [ -d "/comfyui/custom_nodes/$name" ]; then
     echo "runpod-worker-comfy: OK directory: $name"
   else

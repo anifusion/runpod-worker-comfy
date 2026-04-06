@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ComfyUI nodes required by Anifusion character sheets (workflow.json):
 # - ComfyUI-MVAdapter: LdmPipelineLoader, Diffusers*, multi-view sampling
-# - ComfyUI-Impact-Pack: FaceDetailer, UltralyticsDetectorProvider
+# - ComfyUI-Impact-Pack: FaceDetailer (UltralyticsDetectorProvider lives in Impact Subpack — see below)
+# - ComfyUI-Impact-Subpack: UltralyticsDetectorProvider (required by Anifusion character_sheet workflow.json)
 #
 # Impact Pack `Main` (e.g. 8.28+) uses comfy.samplers.SCHEDULER_HANDLERS, which does not exist on
 # ComfyUI 0.2.7 (comfy-cli --version 0.2.7) — import fails with AttributeError and FaceDetailer
@@ -18,8 +19,7 @@ PY="python3 -m pip"
 mkdir -p /comfyui/custom_nodes
 cd /comfyui/custom_nodes
 
-# Optional: set COMFYUI_MV_ADAPTER_REF at build time (e.g. v1.0.2) for reproducible builds vs ComfyUI 0.2.7.
-# Default: shallow clone of default branch (currently main).
+# COMFYUI_MV_ADAPTER_REF: unset → clone default branch (main); Dockerfile passes v1.0.2 by default.
 MV_REF="${COMFYUI_MV_ADAPTER_REF:-}"
 if [[ ! -d ComfyUI-MVAdapter ]]; then
   if [[ -n "$MV_REF" ]]; then
@@ -37,13 +37,22 @@ if [[ ! -d ComfyUI-Impact-Pack ]]; then
     https://github.com/ltdrdata/ComfyUI-Impact-Pack.git
 fi
 
-$PY install --no-cache-dir ultralytics
+if [[ ! -d ComfyUI-Impact-Subpack ]]; then
+  git clone --depth 1 --branch main --single-branch \
+    https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git
+fi
 
 # Impact Pack first — may upgrade transformers; MVAdapter reinstalls pins next.
 $PY install --no-cache-dir -r /comfyui/custom_nodes/ComfyUI-Impact-Pack/requirements.txt
 
+# Subpack: UltralyticsDetectorProvider + ultralytics>=8.3.162 (do not rely on Impact Pack for this node).
+$PY install --no-cache-dir -r /comfyui/custom_nodes/ComfyUI-Impact-Subpack/requirements.txt
+
 # MVAdapter last so diffusers==0.31.0, transformers==4.46.3, huggingface_hub==0.24.6 win.
 $PY install --no-cache-dir -r /comfyui/custom_nodes/ComfyUI-MVAdapter/requirements.txt
+
+# Impact Pack 8.x pins numpy<2; MVAdapter only sets numpy>=1.26.2 and could otherwise pull NumPy 2.x.
+$PY install --no-cache-dir "numpy>=1.26.2,<2"
 
 # Fail the image build if MVAdapter's diffusers stack is broken (common silent runtime failure).
 python3 - <<'PY'

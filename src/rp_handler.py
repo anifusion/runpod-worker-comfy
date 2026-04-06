@@ -64,11 +64,10 @@ def log_comfy_node_registry_once():
         missing = [n for n in _CHARACTER_SHEET_NODE_TYPES if n not in data]
         if missing:
             print(
-                "runpod-worker-comfy - HINT: MISSING usually means the custom node package "
-                "failed to import (check ComfyUI stderr above) or ComfyUI-MVAdapter/Impact-Pack "
-                "is incompatible with this ComfyUI build. Dockerfile pins ComfyUI via "
-                "comfy-cli --version 0.2.7 while MVAdapter is cloned from default branch at "
-                "image build time — pin ComfyUI-MVAdapter to a known git ref if imports break."
+                "runpod-worker-comfy - HINT: MISSING usually means a custom node failed to import "
+                "(see ComfyUI stderr: Impact Main needs SCHEDULER_HANDLERS; use pinned Impact 8.9 with "
+                "ComfyUI 0.2.7). UltralyticsDetectorProvider requires ComfyUI-Impact-Subpack. "
+                "MVAdapter pins diffusers/transformers; numpy must stay <2 for Impact 8.x."
             )
     except requests.RequestException as e:
         print(f"runpod-worker-comfy - object_info diagnostic failed: {e}")
