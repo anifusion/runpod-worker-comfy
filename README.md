@@ -500,7 +500,7 @@ If you want to use the publish workflows, add these **secrets** to your reposito
 | `DOCKERHUB_REPO` | Docker Hub namespace / org | `timpietruskyblibla` |
 | `DOCKERHUB_IMG` | Image name | `runpod-worker-comfy` |
 
-**Not used by this repo:** `GH_PAT`, `RUNPOD_API_KEY`, and `RUNNER_24GB` do not appear in these workflows. Publishing goes to **Docker Hub** only; RunPod pulls the image by tag—no RunPod API key is required for CI. (Your **Anifusion app** uses `RUNPOD_API_KEY` separately when calling RunPod from the server.)
+**Not used by this repo:** `GH_PAT`, `RUNPOD_API_KEY`, and `RUNNER_24GB` do not appear in these workflows. Publishing goes to **Docker Hub** only; RunPod pulls the image by tag; no RunPod API key is required for CI. (Your **Anifusion app** uses `RUNPOD_API_KEY` separately when calling RunPod from the server.)
 
 ## Acknowledgments
 
