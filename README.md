@@ -119,10 +119,10 @@ RunPod can connect a **GitHub repo** and run `docker build` from the repo root, 
 | Build argument | Default in Dockerfile | When to change |
 | -------------- | --------------------- | ---------------- |
 | `MODEL_TYPE` | `character-sheet` | Bundles animagine-xl-3.1, sdxl-vae-fp16-fix, 4x-UltraSharp, face_yolov8m. Use `sdxl`, `sd3`, `flux1-schnell`, or `flux1-dev` for other stacks. |
-| `WITH_CHARACTER_SHEET_NODES` | `true` | Installs ComfyUI-MVAdapter + Impact Pack (required for Anifusion character-sheet workflows). Set to `false` only if you want a slimmer image and will not run those nodes. |
+| `WITH_CHARACTER_SHEET_NODES` | `true` | Installs ComfyUI-MVAdapter + Impact Pack (required for character-sheet workflows). Set to `false` only if you want a slimmer image and will not run those nodes. |
 | `HUGGINGFACE_ACCESS_TOKEN` | _(empty)_ | Required for `MODEL_TYPE=sd3` or `flux1-dev` downloads from Hugging Face. |
 
-A plain **`docker build`** (no args) targets the **Anifusion character-sheet** model bundle plus MV-Adapter nodes. Allow enough **container build disk** (on the order of tens of GB). For **stock SDXL** weights only, pass **`--build-arg MODEL_TYPE=sdxl`**.
+A plain **`docker build`** (no args) targets the **character-sheet** model bundle plus MV-Adapter nodes. Allow enough **container build disk** (on the order of tens of GB). For **stock SDXL** weights only, pass **`--build-arg MODEL_TYPE=sdxl`**.
 
 ### Create your template (optional)
 
@@ -163,7 +163,7 @@ A plain **`docker build`** (no args) targets the **Anifusion character-sheet** m
 | Stable Diffusion 3 Medium | `sd3`               | 5 GB                  | 20 GB          |
 | FLUX.1 Schnell            | `flux1-schnell`     | 24 GB                 | 30 GB          |
 | FLUX.1 dev                | `flux1-dev`         | 24 GB                 | 30 GB          |
-| Anifusion character sheet | `character-sheet`   | 24 GB                 | 50 GB          |
+| Character sheet           | `character-sheet`   | 24 GB                 | 50 GB          |
 
 ## API specification
 
@@ -357,7 +357,7 @@ docker build --build-arg MODEL_TYPE=sdxl -t <your_dockerhub_username>/runpod-wor
 # Build the SD3 image
 docker build --build-arg MODEL_TYPE=sd3 --build-arg HUGGINGFACE_ACCESS_TOKEN=<your-huggingface-token> -t <your_dockerhub_username>/runpod-worker-comfy:dev-sd3 --platform linux/amd64 .
 
-# Anifusion character sheets (ComfyUI-MVAdapter + Impact Pack + animagine-xl / upscaler / face YOLO)
+# Character sheets (ComfyUI-MVAdapter + Impact Pack + animagine-xl / upscaler / face YOLO)
 docker build \
   --build-arg WITH_CHARACTER_SHEET_NODES=true \
   --build-arg MODEL_TYPE=character-sheet \
@@ -500,7 +500,7 @@ If you want to use the publish workflows, add these **secrets** to your reposito
 | `DOCKERHUB_REPO` | Docker Hub namespace / org | `timpietruskyblibla` |
 | `DOCKERHUB_IMG` | Image name | `runpod-worker-comfy` |
 
-**Not used by this repo:** `GH_PAT`, `RUNPOD_API_KEY`, and `RUNNER_24GB` do not appear in these workflows. Publishing goes to **Docker Hub** only; RunPod pulls the image by tag; no RunPod API key is required for CI. (Your **Anifusion app** uses `RUNPOD_API_KEY` separately when calling RunPod from the server.)
+**Not used by this repo:** `GH_PAT`, `RUNPOD_API_KEY`, and `RUNNER_24GB` do not appear in these workflows. Publishing goes to **Docker Hub** only; RunPod pulls the image by tag; no RunPod API key is required for CI.
 
 ## Acknowledgments
 

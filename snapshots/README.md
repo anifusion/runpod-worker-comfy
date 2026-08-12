@@ -4,4 +4,4 @@ Place `*_snapshot*.json` files here if you use [ComfyUI Manager snapshot restore
 
 If this directory has no snapshot JSON, the build skips restoration (exit 0).
 
-Character sheets (Anifusion) rely on `install_character_sheet_custom_nodes.sh` plus the `character-sheet` bake target, not on a snapshot.
+Character sheets rely on `install_character_sheet_custom_nodes.sh` plus the `character-sheet` bake target, not on a snapshot.

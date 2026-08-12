@@ -27,7 +27,7 @@ REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 # Logged once per worker process after Comfy responds; shows up in RunPod logs / job output.
 _NODE_DIAGNOSTICS_LOGGED = False
 
-# Nodes required by Anifusion character_sheet workflow (MVAdapter + Impact Pack + core).
+# Nodes required by the character-sheet workflow (MVAdapter + Impact Pack + core).
 _CHARACTER_SHEET_NODE_TYPES = (
     "LdmPipelineLoader",
     "DiffusersMVSchedulerLoader",

@@ -73,7 +73,7 @@ target "flux1-dev" {
   inherits = ["base"]
 }
 
-# Anifusion character sheets: MV-Adapter + Impact Pack + animagine-xl / upscaler / face detector (~7GB+ checkpoint)
+# Character sheets: MV-Adapter + Impact Pack + animagine-xl / upscaler / face detector (~7GB+ checkpoint)
 # WITH_CHARACTER_SHEET_NODES defaults to true in Dockerfile; kept explicit for clarity.
 target "character-sheet" {
   context = "."

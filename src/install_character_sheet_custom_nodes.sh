@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# ComfyUI nodes required by Anifusion character sheets (workflow.json):
+# ComfyUI nodes required by the character-sheet workflow (workflow.json):
 # - ComfyUI-MVAdapter: LdmPipelineLoader, Diffusers*, multi-view sampling
 # - ComfyUI-Impact-Pack: FaceDetailer (UltralyticsDetectorProvider lives in Impact Subpack — see below)
-# - ComfyUI-Impact-Subpack: UltralyticsDetectorProvider (required by Anifusion character_sheet workflow.json)
+# - ComfyUI-Impact-Subpack: UltralyticsDetectorProvider (required by the character-sheet workflow)
 #
 # Impact Pack `Main` (e.g. 8.28+) uses comfy.samplers.SCHEDULER_HANDLERS, which does not exist on
 # ComfyUI 0.2.7 (comfy-cli --version 0.2.7) — import fails with AttributeError and FaceDetailer

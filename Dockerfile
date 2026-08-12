@@ -2,7 +2,7 @@
 # Downloader stage ARG MODEL_TYPE (below) must have a default or RunPod/GitHub builds ship ComfyUI with no checkpoints.
 #
 # Character-sheet custom nodes (MVAdapter + Impact Pack) default to ON so a plain `docker build` or RunPod
-# "build from Git" without extra args matches Anifusion's Comfy workflow (LdmPipelineLoader, FaceDetailer, …).
+# "build from Git" without extra args matches the bundled character-sheet workflow (LdmPipelineLoader, FaceDetailer, …).
 # For a slimmer image: --build-arg WITH_CHARACTER_SHEET_NODES=false
 #
 # Default MODEL_TYPE (downloader) is character-sheet so animagine-xl-3.1, 4x-UltraSharp, face_yolov8m ship in a plain build.
@@ -12,7 +12,7 @@
 # Stage 1: Base image with common dependencies
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 as base
 
-# When true, installs ComfyUI-MVAdapter + Impact Pack (Anifusion character sheets).
+# When true, installs ComfyUI-MVAdapter + Impact Pack (character-sheet workflows).
 ARG WITH_CHARACTER_SHEET_NODES=true
 # Pin ComfyUI-MVAdapter to a release tag by default (reproducible; main can break ComfyUI 0.2.7).
 # Override with --build-arg COMFYUI_MV_ADAPTER_REF=main to track upstream.
@@ -93,7 +93,7 @@ CMD ["/start.sh"]
 FROM base as downloader
 
 ARG HUGGINGFACE_ACCESS_TOKEN
-# Default: Anifusion character-sheet weights (see README). Override e.g. MODEL_TYPE=sdxl for stock SDXL-only checkpoints.
+# Default: character-sheet weights (see README). Override e.g. MODEL_TYPE=sdxl for stock SDXL-only checkpoints.
 ARG MODEL_TYPE=character-sheet
 
 # Change working directory to ComfyUI
