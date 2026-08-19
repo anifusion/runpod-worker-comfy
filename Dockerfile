@@ -63,8 +63,8 @@ RUN chmod +x /tmp/install_character_sheet_custom_nodes.sh && \
       /tmp/install_character_sheet_custom_nodes.sh; \
     fi
 
-# Install runpod
-RUN pip install runpod requests
+# Install Runpod serverless worker SDK.
+RUN pip install runpod==1.10.0 requests
 
 # Support for the network volume
 ADD src/extra_model_paths.yaml ./
