@@ -25,6 +25,19 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertIn('"message": "queue failed"', line)
         self.assertIn('test_handler_error_keeps_bounded_diagnostics', line)
 
+    def test_handler_error_keeps_the_underlying_cause(self):
+        try:
+            try:
+                raise RuntimeError("Comfy unavailable")
+            except RuntimeError as cause:
+                raise ValueError("queue failed") from cause
+        except ValueError as error:
+            with patch("builtins.print") as print_mock:
+                rp_handler._log_handler_error("queue_workflow", error)
+        line = print_mock.call_args.args[0]
+        self.assertIn('"cause_type": "RuntimeError"', line)
+        self.assertIn('"cause_message": "Comfy unavailable"', line)
+
     def test_valid_input_with_workflow_only(self):
         input_data = {"workflow": {"key": "value"}}
         validated_data, error = rp_handler.validate_input(input_data)

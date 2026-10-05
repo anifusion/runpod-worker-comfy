@@ -33,12 +33,20 @@ def _log_handler_error(stage, error):
     """Keep bounded exception details in restricted RunPod worker logs."""
     try:
         frames = traceback.extract_tb(error.__traceback__)[-6:]
-        print("runpod-worker-comfy - handler error " + json.dumps({
+        diagnostic = {
             "stage": stage,
             "type": type(error).__name__,
             "message": str(error)[:2000],
             "frames": [f"{frame.name}:{frame.lineno}" for frame in frames],
-        }))
+        }
+        try:
+            cause = error.__cause__ or error.__context__
+            if isinstance(cause, BaseException) and cause is not error:
+                diagnostic["cause_type"] = type(cause).__name__
+                diagnostic["cause_message"] = str(cause)[:1000]
+        except Exception:
+            pass
+        print("runpod-worker-comfy - handler error " + json.dumps(diagnostic))
     except Exception:
         try:
             print(f"runpod-worker-comfy - handler error stage={stage}")
