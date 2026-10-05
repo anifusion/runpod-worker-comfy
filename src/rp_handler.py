@@ -8,6 +8,7 @@ import time
 import os
 import requests
 import base64
+import traceback
 from io import BytesIO
 
 # Time to wait between API check attempts in milliseconds
@@ -26,6 +27,23 @@ REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 
 # Logged once per worker process after Comfy responds; shows up in RunPod logs / job output.
 _NODE_DIAGNOSTICS_LOGGED = False
+
+
+def _log_handler_error(stage, error):
+    """Keep bounded exception details in restricted RunPod worker logs."""
+    try:
+        frames = traceback.extract_tb(error.__traceback__)[-6:]
+        print("runpod-worker-comfy - handler error " + json.dumps({
+            "stage": stage,
+            "type": type(error).__name__,
+            "message": str(error)[:2000],
+            "frames": [f"{frame.name}:{frame.lineno}" for frame in frames],
+        }))
+    except Exception:
+        try:
+            print(f"runpod-worker-comfy - handler error stage={stage}")
+        except Exception:
+            pass
 
 # Nodes required by the character-sheet workflow (MVAdapter + Impact Pack + core).
 _CHARACTER_SHEET_NODE_TYPES = (
@@ -441,6 +459,7 @@ def handler(job):
         prompt_id = queued_workflow["prompt_id"]
         print(f"runpod-worker-comfy - queued workflow with ID {prompt_id}")
     except Exception as e:
+        _log_handler_error("queue_workflow", e)
         return {"error": f"Error queuing workflow: {str(e)}"}
 
     # Poll for completion
@@ -465,6 +484,7 @@ def handler(job):
         else:
             return {"error": "Max retries reached while waiting for image generation"}
     except Exception as e:
+        _log_handler_error("poll_workflow", e)
         return {"error": f"Error waiting for image generation: {str(e)}"}
 
     # Get the generated image and return it as URL in an AWS bucket or as base64

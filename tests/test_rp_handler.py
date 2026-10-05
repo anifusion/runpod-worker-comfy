@@ -14,6 +14,17 @@ RUNPOD_WORKER_COMFY_TEST_RESOURCES_IMAGES = "./test_resources/images"
 
 
 class TestRunpodWorkerComfy(unittest.TestCase):
+    def test_handler_error_keeps_bounded_diagnostics(self):
+        try:
+            raise RuntimeError("queue failed")
+        except RuntimeError as error:
+            with patch("builtins.print") as print_mock:
+                rp_handler._log_handler_error("queue_workflow", error)
+        line = print_mock.call_args.args[0]
+        self.assertIn('"stage": "queue_workflow"', line)
+        self.assertIn('"message": "queue failed"', line)
+        self.assertIn('test_handler_error_keeps_bounded_diagnostics', line)
+
     def test_valid_input_with_workflow_only(self):
         input_data = {"workflow": {"key": "value"}}
         validated_data, error = rp_handler.validate_input(input_data)
