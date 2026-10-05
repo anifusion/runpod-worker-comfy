@@ -38,6 +38,13 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertIn('"cause_type": "RuntimeError"', line)
         self.assertIn('"cause_message": "Comfy unavailable"', line)
 
+    def test_provider_failure_keeps_job_reference_without_payload(self):
+        with patch("builtins.print") as print_mock:
+            rp_handler._log_comfy_failure("queue_workflow", "Provider refused", 400, "job_123")
+        line = print_mock.call_args.args[0]
+        self.assertIn('"job_id": "job_123"', line)
+        self.assertIn('"status": 400', line)
+
     def test_valid_input_with_workflow_only(self):
         input_data = {"workflow": {"key": "value"}}
         validated_data, error = rp_handler.validate_input(input_data)
@@ -129,9 +136,23 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         mock_cm.__enter__.return_value = mock_cm
         mock_cm.__exit__.return_value = None
         mock_urlopen.return_value = mock_cm
-        result = rp_handler.queue_workflow({"1": {"class_type": "Missing"}})
-        self.assertIn("error", result)
-        self.assertIn("LdmPipelineLoader", result["error"])
+        with patch("builtins.print") as print_mock:
+            result = rp_handler.queue_workflow({"1": {"class_type": "Missing"}})
+        self.assertEqual(result, {"error": "ComfyUI rejected the workflow"})
+        self.assertIn("LdmPipelineLoader", print_mock.call_args.args[0])
+
+    @patch("rp_handler.urllib.request.urlopen")
+    def test_queue_error_never_returns_provider_text(self, mock_urlopen):
+        private_text = "signed-url-and-private-prompt"
+        mock_cm = MagicMock()
+        mock_cm.read.return_value = json.dumps(
+            {"error": {"type": "invalid_prompt", "message": private_text}}
+        ).encode()
+        mock_cm.__enter__.return_value = mock_cm
+        mock_urlopen.return_value = mock_cm
+        with patch("builtins.print"):
+            result = rp_handler.queue_workflow({"1": {"class_type": "Missing"}})
+        self.assertNotIn(private_text, json.dumps(result))
 
     @patch("rp_handler.urllib.request.urlopen")
     def test_get_history(self, mock_urlopen):
@@ -267,7 +288,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
     def test_upload_images_failed(self, mock_post):
         mock_response = unittest.mock.Mock()
         mock_response.status_code = 400
-        mock_response.text = "Error uploading"
+        mock_response.text = "private prompt and signed URL"
         mock_post.return_value = mock_response
 
         test_image_data = base64.b64encode(b"Test Image Data").decode("utf-8")
@@ -278,3 +299,4 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         self.assertEqual(len(responses), 3)
         self.assertEqual(responses["status"], "error")
+        self.assertNotIn("private prompt", json.dumps(responses))
