@@ -102,8 +102,8 @@ This is only needed if you want to upload the generated picture to AWS S3. If yo
 | Environment Variable       | Description                                             | Example                                      |
 | -------------------------- | ------------------------------------------------------- | -------------------------------------------- |
 | `BUCKET_ENDPOINT_URL`      | The endpoint URL of your S3 bucket.                     | `https://<bucket>.s3.<region>.amazonaws.com` |
-| `BUCKET_ACCESS_KEY_ID`     | Your AWS access key ID for accessing the S3 bucket.     | `AKIAIOSFODNN7EXAMPLE`                       |
-| `BUCKET_SECRET_ACCESS_KEY` | Your AWS secret access key for accessing the S3 bucket. | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`   |
+| `BUCKET_ACCESS_KEY_ID`     | Your AWS access key ID for accessing the S3 bucket.     | `<access-key-id>`                            |
+| `BUCKET_SECRET_ACCESS_KEY` | Your AWS secret access key for accessing the S3 bucket. | `<secret-access-key>`                        |
 
 ## Use the Docker image on Runpod
 
@@ -219,9 +219,7 @@ An array of images, where each image should have a different name.
      - Replace `<api_key>` with your key.
 
 3. **Use your Endpoint**:
-   - Replace `<endpoint_id>` with the [ID of the endpoint](https://www.runpod.io/console/serverless). (You can find the endpoint ID by clicking on your endpoint; it is written underneath the name of the endpoint at the top and also part of the URLs shown at the bottom of the first box.)
-
-![How to find the EndpointID](./assets/my-endpoint-with-endpointID.png)
+   - Replace `<endpoint_id>` with the ID shown in your [endpoint settings](https://www.runpod.io/console/serverless).
 
 ### Health status
 
@@ -478,33 +476,7 @@ docker-compose up
 
 ## Automatically deploy to Docker hub with GitHub Actions
 
-The repo contains workflows that publish images to Docker Hub using GitHub Actions:
-
-- [dev.yml](.github/workflows/dev.yml): Builds and pushes on pushes to branches **other than** `main` (branch name is reflected in tags).
-- [release.yml](.github/workflows/release.yml): On pushes to `main`, runs semantic-release; when a new release is published, builds and pushes versioned tags via `docker/bake-action` (all targets in [docker-bake.hcl](docker-bake.hcl), including `character-sheet`).
-- [test.yml](.github/workflows/test.yml): Python and snapshot tests (no registry push).
-
-**`dev.yml` / `release.yml` runners** use `runs-on: ubuntu-latest-l` (large disk). If your org does not provide that label, change the workflow to `ubuntu-latest` and ensure enough free disk for multi-image bakes (or clear space as the workflows already do).
-
-If you want to use the publish workflows, add these **secrets** to your repository:
-
-| Secret | Description | Example |
-| ------ | ----------- | ------- |
-| `DOCKERHUB_USERNAME` | Docker Hub username | `your-username` |
-| `DOCKERHUB_TOKEN` | Docker Hub access token | `your-token` |
-| `HUGGINGFACE_ACCESS_TOKEN` | Hugging Face read token (for `sd3` / `flux1-dev` bake targets) | `hf_...` |
-| `BLIBLA_SEMANTIC_RELEASE` | GitHub token for [semantic-release](https://github.com/cycjimmy/semantic-release-action) on `main` (contents/issues/PRs) | PAT or `GITHUB_TOKEN` with sufficient scope |
-
-**Repository variables:**
-
-| Variable | Description | Example |
-| -------- | ----------- | ------- |
-| `DOCKERHUB_REPO` | Docker Hub namespace / org | `timpietruskyblibla` |
-| `DOCKERHUB_IMG` | Image name | `runpod-worker-comfy` |
-
-**Not used by this repo:** `GH_PAT`, `RUNPOD_API_KEY`, and `RUNNER_24GB` do not appear in these workflows. Publishing goes to **Docker Hub** only; Runpod pulls the image by tag; no Runpod API key is required for CI.
-
-For an endpoint configured to pull a Docker Hub image, publishing a new tag does not update its existing template or active workers. Update that endpoint's template to the intended tag or digest and roll its workers before checking health and submitting a representative workflow.
+The repository includes optional GitHub Actions workflows for publishing Docker Hub images. Configure their required credentials as repository secrets before using them. A separate endpoint that pulls one of those images needs its image reference updated when you publish a new version.
 
 ## Acknowledgments
 
