@@ -1,7 +1,7 @@
-# Multi-stage image: default `docker build` / RunPod "build from Git" uses the last stage (`final`).
-# Downloader stage ARG MODEL_TYPE (below) must have a default or RunPod/GitHub builds ship ComfyUI with no checkpoints.
+# Multi-stage image: default `docker build` / Runpod "build from Git" uses the last stage (`final`).
+# Downloader stage ARG MODEL_TYPE (below) must have a default or Runpod/GitHub builds ship ComfyUI with no checkpoints.
 #
-# Character-sheet custom nodes (MVAdapter + Impact Pack) default to ON so a plain `docker build` or RunPod
+# Character-sheet custom nodes (MVAdapter + Impact Pack) default to ON so a plain `docker build` or Runpod
 # "build from Git" without extra args matches the bundled character-sheet workflow (LdmPipelineLoader, FaceDetailer, …).
 # For a slimmer image: --build-arg WITH_CHARACTER_SHEET_NODES=false
 #

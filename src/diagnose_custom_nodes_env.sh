@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs before ComfyUI starts; output goes to container stdout (visible in RunPod worker logs).
+# Runs before ComfyUI starts; output goes to container stdout (visible in Runpod worker logs).
 set -u
 echo "runpod-worker-comfy: === custom_nodes directories (pre-Comfy) ==="
 if [ ! -d /comfyui/custom_nodes ]; then

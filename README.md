@@ -1,6 +1,6 @@
 # runpod-worker-comfy
 
-> [ComfyUI](https://github.com/comfyanonymous/ComfyUI) as a serverless API on [RunPod](https://www.runpod.io/)
+> [ComfyUI](https://github.com/comfyanonymous/ComfyUI) as a serverless API on [Runpod](https://www.runpod.io/)
 
 <p align="center">
   <img src="assets/worker_sitting_in_comfy_chair.jpg" title="Worker sitting in comfy chair" />
@@ -18,7 +18,7 @@ Read our article here: https://blib.la/blog/comfyui-on-runpod
 - [Features](#features)
 - [Config](#config)
   * [Upload image to AWS S3](#upload-image-to-aws-s3)
-- [Use the Docker image on RunPod](#use-the-docker-image-on-runpod)
+- [Use the Docker image on Runpod](#use-the-docker-image-on-runpod)
   * [Create your template (optional)](#create-your-template-optional)
   * [Create your endpoint](#create-your-endpoint)
   * [GPU recommendations](#gpu-recommendations)
@@ -26,7 +26,7 @@ Read our article here: https://blib.la/blog/comfyui-on-runpod
   * [JSON Request Body](#json-request-body)
   * [Fields](#fields)
     + ["input.images"](#inputimages)
-- [Interact with your RunPod API](#interact-with-your-runpod-api)
+- [Interact with your Runpod API](#interact-with-your-runpod-api)
   * [Health status](#health-status)
   * [Generate an image](#generate-an-image)
     + [Example request for SDXL with cURL](#example-request-for-sdxl-with-curl)
@@ -40,7 +40,7 @@ Read our article here: https://blib.la/blog/comfyui-on-runpod
 - [Local testing](#local-testing)
   * [Setup](#setup)
     + [Setup for Windows](#setup-for-windows)
-  * [Testing the RunPod handler](#testing-the-runpod-handler)
+  * [Testing the Runpod handler](#testing-the-runpod-handler)
   * [Local API](#local-api)
     + [Access the local Worker API](#access-the-local-worker-api)
     + [Access local ComfyUI](#access-local-comfyui)
@@ -59,7 +59,7 @@ Read our article here: https://blib.la/blog/comfyui-on-runpod
   - `timpietruskyblibla/runpod-worker-comfy:3.4.0-flux1-dev`: contains the checkpoint, text encoders and VAE for [FLUX.1 dev](https://huggingface.co/black-forest-labs/FLUX.1-dev)
   - `timpietruskyblibla/runpod-worker-comfy:3.4.0-sdxl`: contains the checkpoint and VAE for [Stable Diffusion XL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
   - `timpietruskyblibla/runpod-worker-comfy:3.4.0-sd3`: contains the checkpoint for [Stable Diffusion 3 medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
-- ℹ️ [Use the Docker image on RunPod](#use-the-docker-image-on-runpod)
+- ℹ️ [Use the Docker image on Runpod](#use-the-docker-image-on-runpod)
 - 🧪 Pick an [example workflow](./test_resources/workflows/) & [send it to your deployed endpoint](#interact-with-your-runpod-api)
 
 ## Features
@@ -97,7 +97,7 @@ This is only needed if you want to upload the generated picture to AWS S3. If yo
 - Create a bucket in region of your choice in AWS S3 (`BUCKET_ENDPOINT_URL`)
 - Create an IAM that has access rights to AWS S3
 - Create an Access-Key (`BUCKET_ACCESS_KEY_ID` & `BUCKET_SECRET_ACCESS_KEY`) for that IAM
-- Configure these environment variables for your RunPod worker:
+- Configure these environment variables for your Runpod worker:
 
 | Environment Variable       | Description                                             | Example                                      |
 | -------------------------- | ------------------------------------------------------- | -------------------------------------------- |
@@ -105,16 +105,16 @@ This is only needed if you want to upload the generated picture to AWS S3. If yo
 | `BUCKET_ACCESS_KEY_ID`     | Your AWS access key ID for accessing the S3 bucket.     | `AKIAIOSFODNN7EXAMPLE`                       |
 | `BUCKET_SECRET_ACCESS_KEY` | Your AWS secret access key for accessing the S3 bucket. | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`   |
 
-## Use the Docker image on RunPod
+## Use the Docker image on Runpod
 
-### Build from GitHub repository (RunPod)
+### Build from GitHub repository (Runpod)
 
-RunPod can build from a connected GitHub repository automatically after a push. Check the resulting build and endpoint before running jobs. The Docker Hub publishing workflows described below are another option.
+Runpod can build from a connected GitHub repository automatically after a push. Check the resulting build and endpoint before running jobs. The Docker Hub publishing workflows described below are another option.
 
 - **Dockerfile:** `Dockerfile` at repository root (default).
 - **Target:** omit or set `final` (the last stage; that is what a plain `docker build` uses).
 
-**Build arguments** (set in the RunPod template / build settings when not using pre-pushed Hub tags):
+**Build arguments** (set in the Runpod template / build settings when not using pre-pushed Hub tags):
 
 | Build argument | Default in Dockerfile | When to change |
 | -------------- | --------------------- | ---------------- |
@@ -199,14 +199,14 @@ The following describes which fields exist when doing requests to the API. We on
 
 An array of images, where each image should have a different name.
 
-🚨 The request body for a RunPod endpoint is 10 MB for `/run` and 20 MB for `/runsync`, so make sure that your input images are not super huge as this will be blocked by RunPod otherwise, see the [official documentation](https://docs.runpod.io/docs/serverless-endpoint-urls)
+🚨 The request body for a Runpod endpoint is 10 MB for `/run` and 20 MB for `/runsync`, so make sure that your input images are not super huge as this will be blocked by Runpod otherwise, see the [official documentation](https://docs.runpod.io/docs/serverless-endpoint-urls)
 
 | Field Name | Type   | Required | Description                                                                              |
 | ---------- | ------ | -------- | ---------------------------------------------------------------------------------------- |
 | `name`     | String | Yes      | The name of the image. Please use the same name in your workflow to reference the image. |
 | `image`    | String | Yes      | A base64 encoded string of the image.                                                    |
 
-## Interact with your RunPod API
+## Interact with your Runpod API
 
 1. **Generate an API Key**:
 
@@ -288,7 +288,7 @@ You can now take the content of this file and put it into your `workflow` when i
 Using a Network Volume allows you to store and access custom models:
 
 1. **Create a Network Volume**:
-   - Follow the [RunPod Network Volumes guide](https://docs.runpod.io/pods/storage/create-network-volumes) to create a volume.
+   - Follow the [Runpod Network Volumes guide](https://docs.runpod.io/pods/storage/create-network-volumes) to create a volume.
 2. **Populate the Volume**:
 
    - Create a temporary GPU instance:
@@ -373,7 +373,7 @@ Or with bake: `docker buildx bake character-sheet`.
 > [!NOTE]
 >
 > - **Character-sheet:** You must pass **both** `WITH_CHARACTER_SHEET_NODES=true` and `MODEL_TYPE=character-sheet` in a single `docker build`. The Dockerfile fails fast in the model stage if MV-Adapter is missing.
-> - Ensure `--platform linux/amd64` for RunPod, see [issue #13](https://github.com/blib-la/runpod-worker-comfy/issues/13)
+> - Ensure `--platform linux/amd64` for Runpod, see [issue #13](https://github.com/blib-la/runpod-worker-comfy/issues/13)
 
 ## Local testing
 
@@ -437,7 +437,7 @@ wsl -d Ubuntu
 >
 > - Windows: Accessing the API or ComfyUI might not work when you run the Docker Image via WSL, so it is recommended to run the Docker Image directly on Windows using Docker Desktop
 
-### Testing the RunPod handler
+### Testing the Runpod handler
 
 - Run all tests: `python -m unittest discover`
 - If you want to run a specific test: `python -m unittest tests.test_rp_handler.TestRunpodWorkerComfy.test_bucket_endpoint_not_configured`
@@ -447,7 +447,7 @@ To get this to work you will also need to start "ComfyUI", otherwise the handler
 
 ### Local API
 
-For enhanced local development, you can start an API server that simulates the RunPod worker environment. This feature is particularly useful for debugging and testing your integrations locally.
+For enhanced local development, you can start an API server that simulates the Runpod worker environment. This feature is particularly useful for debugging and testing your integrations locally.
 
 Set the `SERVE_API_LOCALLY` environment variable to `true` to activate the local API server when running your Docker container. This is already the default value in the `docker-compose.yml`, so you can get it running by executing:
 
@@ -502,13 +502,13 @@ If you want to use the publish workflows, add these **secrets** to your reposito
 | `DOCKERHUB_REPO` | Docker Hub namespace / org | `timpietruskyblibla` |
 | `DOCKERHUB_IMG` | Image name | `runpod-worker-comfy` |
 
-**Not used by this repo:** `GH_PAT`, `RUNPOD_API_KEY`, and `RUNNER_24GB` do not appear in these workflows. Publishing goes to **Docker Hub** only; RunPod pulls the image by tag; no RunPod API key is required for CI.
+**Not used by this repo:** `GH_PAT`, `RUNPOD_API_KEY`, and `RUNNER_24GB` do not appear in these workflows. Publishing goes to **Docker Hub** only; Runpod pulls the image by tag; no Runpod API key is required for CI.
 
 For an endpoint configured to pull a Docker Hub image, publishing a new tag does not update its existing template or active workers. Update that endpoint's template to the intended tag or digest and roll its workers before checking health and submitting a representative workflow.
 
 ## Acknowledgments
 
 - Thanks to [all contributors](https://github.com/blib-la/runpod-worker-comfy/graphs/contributors) for your awesome work
-- Thanks to [Justin Merrell](https://github.com/justinmerrell) from RunPod for [worker-1111](https://github.com/runpod-workers/worker-a1111), which was used to get inspired on how to create this worker
+- Thanks to [Justin Merrell](https://github.com/justinmerrell) from Runpod for [worker-1111](https://github.com/runpod-workers/worker-a1111), which was used to get inspired on how to create this worker
 - Thanks to [Ashley Kleynhans](https://github.com/ashleykleynhans) for [runpod-worker-a1111](https://github.com/ashleykleynhans/runpod-worker-a1111), which was used to get inspired on how to create this worker
 - Thanks to [comfyanonymous](https://github.com/comfyanonymous) for creating [ComfyUI](https://github.com/comfyanonymous/ComfyUI), which provides such an awesome API to interact with Stable Diffusion and beyond

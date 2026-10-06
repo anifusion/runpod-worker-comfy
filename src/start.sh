@@ -13,12 +13,12 @@ if [ "$SERVE_API_LOCALLY" == "true" ]; then
     echo "runpod-worker-comfy: Starting ComfyUI"
     python3 -u /comfyui/main.py --disable-auto-launch --disable-metadata --listen &
 
-    echo "runpod-worker-comfy: Starting RunPod Handler"
+    echo "runpod-worker-comfy: Starting Runpod Handler"
     python3 -u /rp_handler.py --rp_serve_api --rp_api_host=0.0.0.0
 else
     echo "runpod-worker-comfy: Starting ComfyUI"
     python3 -u /comfyui/main.py --disable-auto-launch --disable-metadata &
 
-    echo "runpod-worker-comfy: Starting RunPod Handler"
+    echo "runpod-worker-comfy: Starting Runpod Handler"
     python3 -u /rp_handler.py
 fi

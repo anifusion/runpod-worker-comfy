@@ -26,7 +26,7 @@ COMFY_HOST = "127.0.0.1:8188"
 # see https://docs.runpod.io/docs/handler-additional-controls#refresh-worker
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 
-# Logged once per worker process after Comfy responds; shows up in RunPod logs / job output.
+# Logged once per worker process after Comfy responds; shows up in Runpod logs / job output.
 _NODE_DIAGNOSTICS_LOGGED = False
 
 
@@ -42,7 +42,7 @@ def _emit_diagnostic(fields):
 
 
 def _log_handler_error(stage, error, job_id=None):
-    """Keep bounded exception details in restricted RunPod worker logs."""
+    """Keep bounded exception details in restricted Runpod worker logs."""
     try:
         frames = traceback.extract_tb(error.__traceback__)[-6:]
         diagnostic = {
