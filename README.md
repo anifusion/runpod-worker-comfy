@@ -109,7 +109,7 @@ This is only needed if you want to upload the generated picture to AWS S3. If yo
 
 ### Build from GitHub repository (RunPod)
 
-RunPod can connect a **GitHub repo** and run `docker build` from the repo root, similar in spirit to workers like **`runpod-worker-kohya`** (single Dockerfile, no `docker-bake` in CI).
+RunPod can build from a connected GitHub repository automatically after a push. Check the resulting build and endpoint before running jobs. The Docker Hub publishing workflows described below are another option.
 
 - **Dockerfile:** `Dockerfile` at repository root (default).
 - **Target:** omit or set `final` (the last stage; that is what a plain `docker build` uses).
@@ -125,6 +125,8 @@ RunPod can connect a **GitHub repo** and run `docker build` from the repo root, 
 A plain **`docker build`** (no args) targets the **character-sheet** model bundle plus MV-Adapter nodes. Allow enough **container build disk** (on the order of tens of GB). For **stock SDXL** weights only, pass **`--build-arg MODEL_TYPE=sdxl`**.
 
 ### Create your template (optional)
+
+These steps are for an endpoint that pulls a prebuilt Docker Hub image.
 
 - Create a [new template](https://runpod.io/console/serverless/user/templates) by clicking on `New Template`
 - In the dialog, configure:
@@ -502,7 +504,7 @@ If you want to use the publish workflows, add these **secrets** to your reposito
 
 **Not used by this repo:** `GH_PAT`, `RUNPOD_API_KEY`, and `RUNNER_24GB` do not appear in these workflows. Publishing goes to **Docker Hub** only; RunPod pulls the image by tag; no RunPod API key is required for CI.
 
-Publishing an image does not update an existing RunPod template or guarantee that active workers use the new image. After a release, update the production template to the intended versioned tag or immutable digest, roll the endpoint workers, check endpoint health, and submit a representative workflow. Keep the previous image reference available for rollback until verification passes.
+For an endpoint configured to pull a Docker Hub image, publishing a new tag does not update its existing template or active workers. Update that endpoint's template to the intended tag or digest and roll its workers before checking health and submitting a representative workflow.
 
 ## Acknowledgments
 
