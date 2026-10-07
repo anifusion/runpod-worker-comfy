@@ -41,21 +41,21 @@ class TestRunpodWorkerComfy(unittest.TestCase):
     def test_multiline_handler_and_provider_error_keep_one_log_line(self):
         try:
             try:
-                raise RuntimeError("Comfy\r\nunavailable")
+                raise RuntimeError("Comfy \r\n unavailable")
             except RuntimeError as cause:
-                raise ValueError("queue failed\nretry") from cause
+                raise ValueError("queue  failed \n retry") from cause
         except ValueError as error:
             with patch("builtins.print") as print_mock:
                 rp_handler._log_handler_error("queue_workflow", error)
         line = print_mock.call_args.args[0]
-        self.assertIn('"message": "queue failed | retry"', line)
-        self.assertIn('"cause_message": "Comfy | unavailable"', line)
+        self.assertIn('"message": "queue  failed retry"', line)
+        self.assertIn('"cause_message": "Comfy unavailable"', line)
         self.assertIn('"frames":', line)
         self.assertNotIn("\\n", line)
         self.assertNotIn("\n", line)
         with patch("builtins.print") as print_mock:
-            rp_handler._log_comfy_failure("queue_workflow", "provider\nrefused", 400)
-        self.assertIn('"provider_message": "provider | refused"', print_mock.call_args.args[0])
+            rp_handler._log_comfy_failure("queue_workflow", "provider \n refused", 400)
+        self.assertIn('"provider_message": "provider refused"', print_mock.call_args.args[0])
 
     def test_expanded_provider_message_stays_bounded(self):
         with patch("builtins.print") as print_mock:
