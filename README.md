@@ -109,7 +109,9 @@ This is only needed if you want to upload the generated picture to AWS S3. If yo
 
 ### Build from GitHub repository (Runpod)
 
-Runpod can build from a connected GitHub repository automatically after a push. Check the resulting build and endpoint before running jobs. The Docker Hub publishing workflows described below are another option.
+Runpod can build from a connected GitHub repository automatically after a push. The Docker Hub publishing workflows described below are another option.
+
+**Manual action after each push:** Open the endpoint's build history in Runpod. Confirm that the build for the pushed commit is marked `Completed` and the endpoint uses that image before running jobs.
 
 - **Dockerfile:** `Dockerfile` at repository root (default).
 - **Target:** omit or set `final` (the last stage; that is what a plain `docker build` uses).
