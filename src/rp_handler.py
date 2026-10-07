@@ -48,7 +48,7 @@ def _log_handler_error(stage, error, job_id=None):
         diagnostic = {
             "stage": stage,
             "type": type(error).__name__,
-            "message": str(error)[:2000],
+            "message": re.sub(r"\r\n|[\r\n\u2028\u2029]", " | ", str(error)[:2000])[:2000],
             "frames": [f"{frame.name}:{frame.lineno}" for frame in frames],
         }
         if isinstance(job_id, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", job_id):
@@ -57,7 +57,7 @@ def _log_handler_error(stage, error, job_id=None):
             cause = error.__cause__ or error.__context__
             if isinstance(cause, BaseException) and cause is not error:
                 diagnostic["cause_type"] = type(cause).__name__
-                diagnostic["cause_message"] = str(cause)[:1000]
+                diagnostic["cause_message"] = re.sub(r"\r\n|[\r\n\u2028\u2029]", " | ", str(cause)[:1000])[:1000]
         except Exception:
             pass
         _emit_diagnostic(diagnostic)
@@ -75,7 +75,7 @@ def _log_comfy_failure(stage, detail=None, status=None, job_id=None):
     if isinstance(status, int) and 100 <= status <= 599:
         diagnostic["status"] = status
     if isinstance(detail, str):
-        diagnostic["provider_message"] = detail[:2000]
+        diagnostic["provider_message"] = re.sub(r"\r\n|[\r\n\u2028\u2029]", " | ", detail[:2000])[:2000]
     _emit_diagnostic(diagnostic)
 
 

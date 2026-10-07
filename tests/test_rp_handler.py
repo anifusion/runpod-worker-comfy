@@ -38,6 +38,33 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertIn('"cause_type": "RuntimeError"', line)
         self.assertIn('"cause_message": "Comfy unavailable"', line)
 
+    def test_multiline_handler_and_provider_error_keep_one_log_line(self):
+        try:
+            try:
+                raise RuntimeError("Comfy\r\nunavailable")
+            except RuntimeError as cause:
+                raise ValueError("queue failed\nretry") from cause
+        except ValueError as error:
+            with patch("builtins.print") as print_mock:
+                rp_handler._log_handler_error("queue_workflow", error)
+        line = print_mock.call_args.args[0]
+        self.assertIn('"message": "queue failed | retry"', line)
+        self.assertIn('"cause_message": "Comfy | unavailable"', line)
+        self.assertIn('"frames":', line)
+        self.assertNotIn("\\n", line)
+        self.assertNotIn("\n", line)
+        with patch("builtins.print") as print_mock:
+            rp_handler._log_comfy_failure("queue_workflow", "provider\nrefused", 400)
+        self.assertIn('"provider_message": "provider | refused"', print_mock.call_args.args[0])
+
+    def test_expanded_provider_message_stays_bounded(self):
+        with patch("builtins.print") as print_mock:
+            rp_handler._log_comfy_failure("queue_workflow", "a\n" * 2000, 400)
+        line = print_mock.call_args.args[0]
+        record = json.loads(line[line.index("{"):])
+        self.assertEqual(len(record["provider_message"]), 2000)
+        self.assertNotIn("\\n", line)
+
     def test_provider_failure_keeps_job_reference_without_payload(self):
         with patch("builtins.print") as print_mock:
             rp_handler._log_comfy_failure("queue_workflow", "Provider refused", 400, "job_123")
