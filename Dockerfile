@@ -7,10 +7,10 @@
 #
 # Default MODEL_TYPE (downloader) is character-sheet so animagine-xl-3.1, 4x-UltraSharp, face_yolov8m ship in a plain build.
 # Override with --build-arg MODEL_TYPE=sdxl (or flux / sd3) if you need a different stack.
-# Optional for sd3 / flux1-dev: HUGGINGFACE_ACCESS_TOKEN
+# For sd3 / flux1-dev, pass HUGGINGFACE_ACCESS_TOKEN as a BuildKit secret.
 
 # Stage 1: Base image with common dependencies
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 as base
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 AS base
 
 # When true, installs ComfyUI-MVAdapter + Impact Pack (character-sheet workflows).
 ARG WITH_CHARACTER_SHEET_NODES=true
@@ -90,9 +90,8 @@ RUN /restore_snapshot.sh
 CMD ["/start.sh"]
 
 # Stage 2: Download models
-FROM base as downloader
+FROM base AS downloader
 
-ARG HUGGINGFACE_ACCESS_TOKEN
 # Default: character-sheet weights (see README). Override e.g. MODEL_TYPE=sdxl for stock SDXL-only checkpoints.
 ARG MODEL_TYPE=character-sheet
 
@@ -110,7 +109,15 @@ RUN if [ "$MODEL_TYPE" = "character-sheet" ] && [ ! -d /comfyui/custom_nodes/Com
     fi
 
 # Download checkpoints/vae/LoRA to include in image based on model type
-RUN if [ "$MODEL_TYPE" = "sdxl" ]; then \
+RUN --mount=type=secret,id=HUGGINGFACE_ACCESS_TOKEN,required=false \
+    if [ "$MODEL_TYPE" = "sd3" ] || [ "$MODEL_TYPE" = "flux1-dev" ]; then \
+      if [ ! -s /run/secrets/HUGGINGFACE_ACCESS_TOKEN ]; then \
+        echo "Hugging Face token required for this model type." >&2; \
+        exit 1; \
+      fi; \
+      HF_TOKEN="$(cat /run/secrets/HUGGINGFACE_ACCESS_TOKEN)"; \
+    fi; \
+    if [ "$MODEL_TYPE" = "sdxl" ]; then \
       wget -O models/checkpoints/sd_xl_base_1.0.safetensors https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors && \
       wget -O models/vae/sdxl_vae.safetensors https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors && \
       wget -O models/vae/sdxl-vae-fp16-fix.safetensors https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors; \
@@ -120,21 +127,21 @@ RUN if [ "$MODEL_TYPE" = "sdxl" ]; then \
       wget -O models/upscale_models/4x-UltraSharp.pth https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.pth && \
       wget -O models/ultralytics/bbox/face_yolov8m.pt https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8m.pt; \
     elif [ "$MODEL_TYPE" = "sd3" ]; then \
-      wget --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/checkpoints/sd3_medium_incl_clips_t5xxlfp8.safetensors https://huggingface.co/stabilityai/stable-diffusion-3-medium/resolve/main/sd3_medium_incl_clips_t5xxlfp8.safetensors; \
+      wget --header="Authorization: Bearer ${HF_TOKEN}" -O models/checkpoints/sd3_medium_incl_clips_t5xxlfp8.safetensors https://huggingface.co/stabilityai/stable-diffusion-3-medium/resolve/main/sd3_medium_incl_clips_t5xxlfp8.safetensors; \
     elif [ "$MODEL_TYPE" = "flux1-schnell" ]; then \
       wget -O models/unet/flux1-schnell.safetensors https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/flux1-schnell.safetensors && \
       wget -O models/clip/clip_l.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors && \
       wget -O models/clip/t5xxl_fp8_e4m3fn.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors && \
       wget -O models/vae/ae.safetensors https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors; \
     elif [ "$MODEL_TYPE" = "flux1-dev" ]; then \
-      wget --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/unet/flux1-dev.safetensors https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors && \
+      wget --header="Authorization: Bearer ${HF_TOKEN}" -O models/unet/flux1-dev.safetensors https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors && \
       wget -O models/clip/clip_l.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors && \
       wget -O models/clip/t5xxl_fp8_e4m3fn.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors && \
-      wget --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/vae/ae.safetensors https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors; \
+      wget --header="Authorization: Bearer ${HF_TOKEN}" -O models/vae/ae.safetensors https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors; \
     fi
 
 # Stage 3: Final image
-FROM base as final
+FROM base AS final
 
 # Copy models from stage 2 to the final image
 COPY --from=downloader /comfyui/models /comfyui/models
