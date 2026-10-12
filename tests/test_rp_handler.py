@@ -71,6 +71,22 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         line = print_mock.call_args.args[0]
         self.assertIn('"job_id": "job_123"', line)
         self.assertIn('"status": 400', line)
+        safe_line = print_mock.call_args_list[0].args[0]
+        self.assertEqual(
+            json.loads(safe_line.split("safe_event ", 1)[1]),
+            {"event": "worker_failure", "stage": "queue_workflow", "job_id": "job_123", "status": 400},
+        )
+        self.assertNotIn("Provider refused", safe_line)
+
+    def test_safe_failure_event_omits_private_error_and_bad_identifier(self):
+        with patch("builtins.print") as print_mock:
+            rp_handler._log_handler_error("poll_workflow", RuntimeError("private\nprompt"), "private@example.test")
+        safe_line = print_mock.call_args_list[0].args[0]
+        self.assertEqual(
+            json.loads(safe_line.split("safe_event ", 1)[1]),
+            {"event": "worker_failure", "stage": "poll_workflow"},
+        )
+        self.assertEqual(safe_line.count("\n"), 0)
 
     def test_valid_input_with_workflow_only(self):
         input_data = {"workflow": {"key": "value"}}

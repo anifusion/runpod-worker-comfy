@@ -48,7 +48,23 @@ def _single_line_text(text):
     return " ".join(parts)
 
 
-def _emit_diagnostic(fields):
+def _emit_diagnostic(fields, *, failure=False):
+    if failure:
+        try:
+            stage = fields.get("stage") if isinstance(fields, dict) else None
+            safe_event = {
+                "event": "worker_failure",
+                "stage": stage if isinstance(stage, str) and re.fullmatch(r"[a-z_]{1,40}", stage) else "unknown",
+            }
+            job_id = fields.get("job_id")
+            if isinstance(job_id, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", job_id):
+                safe_event["job_id"] = job_id
+            status = fields.get("status")
+            if isinstance(status, int) and 100 <= status <= 599:
+                safe_event["status"] = status
+            print("runpod-worker-comfy: safe_event " + json.dumps(safe_event, ensure_ascii=True))
+        except Exception:
+            print('runpod-worker-comfy: safe_event {"event":"worker_failure","stage":"unknown"}')
     try:
         print("runpod-worker-comfy - handler error " + json.dumps(fields, ensure_ascii=True))
     except Exception:
@@ -78,10 +94,10 @@ def _log_handler_error(stage, error, job_id=None):
                 diagnostic["cause_message"] = _single_line_text(str(cause)[:1000])[:1000]
         except Exception:
             pass
-        _emit_diagnostic(diagnostic)
+        _emit_diagnostic(diagnostic, failure=True)
     except Exception:
         try:
-            _emit_diagnostic({"stage": stage, "job_id": job_id})
+            _emit_diagnostic({"stage": stage, "job_id": job_id}, failure=True)
         except Exception:
             pass
 
@@ -94,7 +110,7 @@ def _log_comfy_failure(stage, detail=None, status=None, job_id=None):
         diagnostic["status"] = status
     if isinstance(detail, str):
         diagnostic["provider_message"] = _single_line_text(detail[:2000])[:2000]
-    _emit_diagnostic(diagnostic)
+    _emit_diagnostic(diagnostic, failure=True)
 
 
 def _log_credential_failure(stage, error, job_id=None):
@@ -113,7 +129,7 @@ def _log_credential_failure(stage, error, job_id=None):
                 diagnostic["provider_request_id"] = request_id
     except Exception:
         pass
-    _emit_diagnostic(diagnostic)
+    _emit_diagnostic(diagnostic, failure=True)
 
 # Nodes required by the character-sheet workflow (MVAdapter + Impact Pack + core).
 _CHARACTER_SHEET_NODE_TYPES = (
