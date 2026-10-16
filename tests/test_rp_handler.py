@@ -14,6 +14,18 @@ RUNPOD_WORKER_COMFY_TEST_RESOURCES_IMAGES = "./test_resources/images"
 
 
 class TestRunpodWorkerComfy(unittest.TestCase):
+    @patch("src.rp_handler.queue_workflow")
+    @patch("src.rp_handler.upload_images")
+    @patch("src.rp_handler.check_server")
+    def test_handler_returns_queue_diagnostic_to_callback(self, mock_server, mock_upload, mock_queue):
+        mock_server.return_value = (True, None, None)
+        mock_upload.return_value = {"status": "success"}
+        diagnostic = {"stage": "queue_workflow", "job_id": "job_123", "provider_message": "Missing node"}
+        mock_queue.return_value = {"error": "ComfyUI rejected the workflow", "diagnostic": diagnostic}
+        result = rp_handler.handler({"id": "job_123", "input": {"workflow": {"1": {}}}})
+        self.assertEqual(result["error"], "ComfyUI rejected the workflow")
+        self.assertEqual(result["diagnostic"], diagnostic)
+
     def test_handler_error_keeps_bounded_diagnostics(self):
         try:
             raise RuntimeError("queue failed")
@@ -48,22 +60,44 @@ class TestRunpodWorkerComfy(unittest.TestCase):
             with patch("builtins.print") as print_mock:
                 rp_handler._log_handler_error("queue_workflow", error)
         line = print_mock.call_args.args[0]
-        self.assertIn('"message": "queue  failed retry"', line)
-        self.assertIn('"cause_message": "Comfy unavailable"', line)
+        self.assertIn('"message": "queue  failed \\n retry"', line)
+        self.assertIn('"cause_message": "Comfy \\r\\n unavailable"', line)
         self.assertIn('"frames":', line)
-        self.assertNotIn("\\n", line)
+        self.assertIn("\\n", line)
         self.assertNotIn("\n", line)
         with patch("builtins.print") as print_mock:
             rp_handler._log_comfy_failure("queue_workflow", "provider \n refused", 400)
-        self.assertIn('"provider_message": "provider refused"', print_mock.call_args.args[0])
+        self.assertIn('"provider_message": "provider \\n refused"', print_mock.call_args.args[0])
 
     def test_expanded_provider_message_stays_bounded(self):
         with patch("builtins.print") as print_mock:
-            rp_handler._log_comfy_failure("queue_workflow", "a\n" * 2000, 400)
+            diagnostic = rp_handler._log_comfy_failure("queue_workflow", "a\n" * 10000, 400)
         line = print_mock.call_args.args[0]
         record = json.loads(line[line.index("{"):])
         self.assertEqual(len(record["provider_message"]), 2000)
-        self.assertNotIn("\\n", line)
+        self.assertEqual(record["provider_message_chars"], 16000)
+        self.assertEqual(len(diagnostic["provider_message"]), 16000)
+        self.assertIn("\\n", line)
+        self.assertNotIn("\n", line)
+
+    def test_structured_execution_error_keeps_exception_and_traceback(self):
+        status = {"messages": [["execution_error", {
+            "node_type": "Sampler", "exception_type": "RuntimeError",
+            "exception_message": "model failed", "traceback": ["line 1", "line 2"],
+        }]]}
+        detail = rp_handler._format_execution_status_error(status)
+        self.assertIn("RuntimeError", detail)
+        self.assertIn("model failed", detail)
+        self.assertIn("line 2", detail)
+        self.assertEqual(rp_handler._execution_error_code(status), "RuntimeError")
+
+    def test_prompt_validation_keeps_node_error_message(self):
+        detail = rp_handler._format_comfy_prompt_error({
+            "error": {"type": "invalid_prompt"},
+            "node_errors": {"1": {"errors": [{"type": "value_error", "message": "Missing checkpoint"}]}},
+        })
+        self.assertIn("invalid_prompt", detail)
+        self.assertIn("Missing checkpoint", detail)
 
     def test_provider_failure_keeps_job_reference_without_payload(self):
         with patch("builtins.print") as print_mock:
@@ -150,9 +184,13 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
     @patch("rp_handler.requests.get")
     def test_check_server_server_down(self, mock_requests):
-        mock_requests.get.side_effect = rp_handler.requests.RequestException()
+        mock_requests.side_effect = rp_handler.requests.RequestException()
         result = rp_handler.check_server("http://127.0.0.1:8188", 1, 50)
         self.assertFalse(result)
+        available, error, status = rp_handler.check_server("http://127.0.0.1:8188", 1, 0, with_failure=True)
+        self.assertFalse(available)
+        self.assertIsInstance(error, rp_handler.requests.RequestException)
+        self.assertIsNone(status)
 
     @patch("rp_handler.urllib.request.urlopen")
     def test_queue_prompt(self, mock_urlopen):
@@ -181,11 +219,14 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         mock_urlopen.return_value = mock_cm
         with patch("builtins.print") as print_mock:
             result = rp_handler.queue_workflow({"1": {"class_type": "Missing"}})
-        self.assertEqual(result, {"error": "ComfyUI rejected the workflow"})
+        self.assertEqual(result["error"], "ComfyUI rejected the workflow")
+        self.assertEqual(result["diagnostic"]["stage"], "queue_workflow")
+        self.assertEqual(result["diagnostic"]["code"], "invalid_prompt")
+        self.assertIn("LdmPipelineLoader", result["diagnostic"]["provider_message"])
         self.assertIn("LdmPipelineLoader", print_mock.call_args.args[0])
 
     @patch("rp_handler.urllib.request.urlopen")
-    def test_queue_error_never_returns_provider_text(self, mock_urlopen):
+    def test_queue_error_returns_bounded_provider_text_for_restricted_logs(self, mock_urlopen):
         private_text = "signed-url-and-private-prompt"
         mock_cm = MagicMock()
         mock_cm.read.return_value = json.dumps(
@@ -195,7 +236,9 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         mock_urlopen.return_value = mock_cm
         with patch("builtins.print"):
             result = rp_handler.queue_workflow({"1": {"class_type": "Missing"}})
-        self.assertNotIn(private_text, json.dumps(result))
+        self.assertEqual(result["error"], "ComfyUI rejected the workflow")
+        self.assertIn(private_text, result["diagnostic"]["provider_message"])
+        self.assertNotIn("node_errors", result)
 
     @patch("rp_handler.urllib.request.urlopen")
     def test_get_history(self, mock_urlopen):
@@ -340,6 +383,9 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         responses = rp_handler.upload_images(images)
 
-        self.assertEqual(len(responses), 3)
+        self.assertEqual(len(responses), 4)
         self.assertEqual(responses["status"], "error")
+        self.assertNotIn("private prompt", responses["message"])
+        self.assertEqual(responses["diagnostic"]["status"], 400)
+        self.assertEqual(responses["diagnostic"]["provider_message"], "Image upload rejected")
         self.assertNotIn("private prompt", json.dumps(responses))

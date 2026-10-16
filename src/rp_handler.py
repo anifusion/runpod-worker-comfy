@@ -10,6 +10,7 @@ import requests
 import base64
 import traceback
 import re
+from itertools import islice
 from io import BytesIO
 
 # Time to wait between API check attempts in milliseconds
@@ -30,24 +31,6 @@ REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 _NODE_DIAGNOSTICS_LOGGED = False
 
 
-def _single_line_text(text):
-    lines = re.split(r"\r\n|[\r\n\u2028\u2029]", text)
-    if len(lines) == 1:
-        return text
-    last = len(lines) - 1
-    parts = []
-    for index, line in enumerate(lines):
-        if index == 0:
-            line = line.rstrip(" \t\v\f")
-        elif index == last:
-            line = line.lstrip(" \t\v\f")
-        else:
-            line = line.strip(" \t\v\f")
-        if line or index in (0, last):
-            parts.append(line)
-    return " ".join(parts)
-
-
 def _emit_diagnostic(fields, *, failure=False):
     if failure:
         try:
@@ -66,7 +49,13 @@ def _emit_diagnostic(fields, *, failure=False):
         except Exception:
             print('runpod-worker-comfy: safe_event {"event":"worker_failure","stage":"unknown"}')
     try:
-        print("runpod-worker-comfy - handler error " + json.dumps(fields, ensure_ascii=True))
+        logged_fields = dict(fields)
+        for key in ("message", "cause_message", "provider_message"):
+            value = logged_fields.get(key)
+            if isinstance(value, str) and len(value) > 2000:
+                logged_fields[key] = value[-2000:]
+                logged_fields[key + "_chars"] = len(value)
+        print("runpod-worker-comfy - handler error " + json.dumps(logged_fields, ensure_ascii=True))
     except Exception:
         stage = fields.get("stage") if isinstance(fields, dict) else None
         safe_stage = stage if isinstance(stage, str) and re.fullmatch(r"[a-z_]{1,40}", stage) else "unknown"
@@ -76,13 +65,13 @@ def _emit_diagnostic(fields, *, failure=False):
 
 
 def _log_handler_error(stage, error, job_id=None):
-    """Keep bounded exception details in restricted Runpod worker logs."""
+    """Return bounded exception details for restricted worker and app logs."""
     try:
         frames = traceback.extract_tb(error.__traceback__)[-6:]
         diagnostic = {
             "stage": stage,
             "type": type(error).__name__,
-            "message": _single_line_text(str(error)[:2000])[:2000],
+            "message": str(error)[:16000],
             "frames": [f"{frame.name}:{frame.lineno}" for frame in frames],
         }
         if isinstance(job_id, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", job_id):
@@ -91,26 +80,32 @@ def _log_handler_error(stage, error, job_id=None):
             cause = error.__cause__ or error.__context__
             if isinstance(cause, BaseException) and cause is not error:
                 diagnostic["cause_type"] = type(cause).__name__
-                diagnostic["cause_message"] = _single_line_text(str(cause)[:1000])[:1000]
+                diagnostic["cause_message"] = str(cause)[:8000]
         except Exception:
             pass
         _emit_diagnostic(diagnostic, failure=True)
+        return diagnostic
     except Exception:
         try:
-            _emit_diagnostic({"stage": stage, "job_id": job_id}, failure=True)
+            diagnostic = {"stage": stage, "job_id": job_id}
+            _emit_diagnostic(diagnostic, failure=True)
+            return diagnostic
         except Exception:
-            pass
+            return {"stage": stage}
 
 
-def _log_comfy_failure(stage, detail=None, status=None, job_id=None):
+def _log_comfy_failure(stage, detail=None, status=None, job_id=None, code=None):
     diagnostic = {"stage": stage, "type": "ComfyUIError"}
     if isinstance(job_id, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", job_id):
         diagnostic["job_id"] = job_id
     if isinstance(status, int) and 100 <= status <= 599:
         diagnostic["status"] = status
+    if isinstance(code, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,79}", code):
+        diagnostic["code"] = code
     if isinstance(detail, str):
-        diagnostic["provider_message"] = _single_line_text(detail[:2000])[:2000]
+        diagnostic["provider_message"] = detail[:16000]
     _emit_diagnostic(diagnostic, failure=True)
+    return diagnostic
 
 
 def _log_credential_failure(stage, error, job_id=None):
@@ -130,6 +125,7 @@ def _log_credential_failure(stage, error, job_id=None):
     except Exception:
         pass
     _emit_diagnostic(diagnostic, failure=True)
+    return diagnostic
 
 # Nodes required by the character-sheet workflow (MVAdapter + Impact Pack + core).
 _CHARACTER_SHEET_NODE_TYPES = (
@@ -182,26 +178,62 @@ def log_comfy_node_registry_once():
 def _format_comfy_prompt_error(body: dict) -> str:
     """Keep bounded provider text in restricted worker diagnostics."""
     err = body.get("error")
+    parts = []
     if isinstance(err, dict):
-        parts = [err.get("type"), err.get("message"), err.get("details")]
-        text = "; ".join(part[:500] for part in parts if isinstance(part, str))
-        return text[:2000] or "Provider rejected workflow"
-    if isinstance(err, str):
-        return err[:2000]
+        parts.extend(value[:8000] for value in (err.get("type"), err.get("message"), err.get("details"))
+                     if isinstance(value, str))
+    elif isinstance(err, str):
+        parts.append(err[:16000])
     node_errors = body.get("node_errors")
     if isinstance(node_errors, dict):
-        return f"Node validation failed for {min(len(node_errors), 999)} node(s)"
-    return "Provider rejected workflow"
+        parts.append(f"Node validation failed for {min(len(node_errors), 999)} node(s)")
+        for node in islice(node_errors.values(), 20):
+            if not isinstance(node, dict):
+                continue
+            errors = node.get("errors")
+            if not isinstance(errors, list):
+                continue
+            for item in errors[:10]:
+                if isinstance(item, dict):
+                    parts.extend(value[:2000] for value in (item.get("type"), item.get("message"), item.get("details"))
+                                 if isinstance(value, str))
+    return "; ".join(parts)[:16000] or "Provider rejected workflow"
+
+
+def _comfy_prompt_code(body: dict):
+    error = body.get("error")
+    return error.get("type") if isinstance(error, dict) else None
 
 
 def _format_execution_status_error(status_obj: dict) -> str:
     """Extract bounded provider text without serializing the status payload."""
     msgs = status_obj.get("messages")
     if isinstance(msgs, list) and msgs:
-        parts = [item[:500] for item in msgs if isinstance(item, str)]
+        parts = []
+        for item in msgs[-10:]:
+            if isinstance(item, str):
+                parts.append(item[:8000])
+            elif isinstance(item, (list, tuple)) and len(item) == 2 and item[0] == "execution_error" and isinstance(item[1], dict):
+                detail = item[1]
+                for key in ("node_type", "exception_type", "exception_message"):
+                    value = detail.get(key)
+                    if isinstance(value, str):
+                        parts.append(f"{key}: {value[:8000]}")
+                frames = detail.get("traceback")
+                if isinstance(frames, list):
+                    parts.extend(frame[:2000] for frame in frames[-12:] if isinstance(frame, str))
         if parts:
-            return "; ".join(parts)[:2000]
+            return "\n".join(parts)[-16000:]
     return "ComfyUI reported an execution failure"
+
+
+def _execution_error_code(status_obj: dict):
+    messages = status_obj.get("messages")
+    if isinstance(messages, list):
+        for item in reversed(messages[-10:]):
+            if isinstance(item, (list, tuple)) and len(item) == 2 and item[0] == "execution_error" and isinstance(item[1], dict):
+                return item[1].get("exception_type")
+    return None
 
 
 def validate_input(job_input):
@@ -246,7 +278,7 @@ def validate_input(job_input):
     return {"workflow": workflow, "images": images}, None
 
 
-def check_server(url, retries=500, delay=50):
+def check_server(url, retries=500, delay=50, *, with_failure=False):
     """
     Check if a server is reachable via HTTP GET request
 
@@ -259,7 +291,9 @@ def check_server(url, retries=500, delay=50):
     bool: True if the server is reachable within the given number of retries, otherwise False
     """
 
-    for i in range(retries):
+    last_error = None
+    last_status = None
+    for _ in range(retries):
         try:
             response = requests.get(url)
 
@@ -267,10 +301,12 @@ def check_server(url, retries=500, delay=50):
             if response.status_code == 200:
                 print(f"runpod-worker-comfy - API is reachable")
                 log_comfy_node_registry_once()
-                return True
+                return (True, None, None) if with_failure else True
+            last_error = None
+            last_status = response.status_code
         except requests.RequestException as e:
-            # If an exception occurs, the server may not be ready
-            pass
+            last_error = e
+            last_status = None
 
         # Wait for the specified delay before retrying
         time.sleep(delay / 1000)
@@ -278,7 +314,7 @@ def check_server(url, retries=500, delay=50):
     print(
         f"runpod-worker-comfy - Failed to connect to server at {url} after {retries} attempts."
     )
-    return False
+    return (False, last_error, last_status) if with_failure else False
 
 
 def upload_images(images, job_id=None):
@@ -297,6 +333,7 @@ def upload_images(images, job_id=None):
 
     responses = []
     upload_errors = []
+    last_diagnostic = None
 
     print(f"runpod-worker-comfy - image(s) upload")
 
@@ -309,12 +346,12 @@ def upload_images(images, job_id=None):
             }
             response = requests.post(f"http://{COMFY_HOST}/upload/image", files=files)
             if response.status_code != 200:
-                _log_comfy_failure("upload_image", "Image upload rejected", response.status_code, job_id)
+                last_diagnostic = _log_comfy_failure("upload_image", "Image upload rejected", response.status_code, job_id)
                 upload_errors.append("Image upload failed")
             else:
                 responses.append("Image uploaded")
         except Exception as error:
-            _log_handler_error("upload_image", error, job_id)
+            last_diagnostic = _log_handler_error("upload_image", error, job_id)
             upload_errors.append("Image upload failed")
 
     if upload_errors:
@@ -323,6 +360,7 @@ def upload_images(images, job_id=None):
             "status": "error",
             "message": "Some images failed to upload",
             "details": upload_errors,
+            "diagnostic": last_diagnostic,
         }
 
     print(f"runpod-worker-comfy - image(s) upload complete")
@@ -354,32 +392,36 @@ def queue_workflow(workflow, job_id=None):
         try:
             body = json.loads(raw)
         except json.JSONDecodeError:
-            _log_comfy_failure("queue_workflow", "Non-JSON provider response", e.code, job_id)
-            return {"error": "ComfyUI rejected the workflow"}
+            diagnostic = _log_comfy_failure("queue_workflow", "Non-JSON provider response: " +
+                                            raw.decode("utf-8", errors="replace")[-16000:], e.code, job_id)
+            return {"error": "ComfyUI rejected the workflow", "diagnostic": diagnostic}
         if isinstance(body, dict):
-            _log_comfy_failure("queue_workflow", _format_comfy_prompt_error(body), e.code, job_id)
+            diagnostic = _log_comfy_failure("queue_workflow", _format_comfy_prompt_error(body), e.code, job_id,
+                                            _comfy_prompt_code(body))
         else:
-            _log_comfy_failure("queue_workflow", "Unexpected provider response", e.code, job_id)
-        return {"error": "ComfyUI rejected the workflow"}
+            diagnostic = _log_comfy_failure("queue_workflow", "Unexpected provider response", e.code, job_id)
+        return {"error": "ComfyUI rejected the workflow", "diagnostic": diagnostic}
 
     try:
         body = json.loads(raw)
     except json.JSONDecodeError:
-        _log_comfy_failure("queue_workflow", "Non-JSON provider response", job_id=job_id)
-        return {"error": "ComfyUI returned an invalid response"}
+        diagnostic = _log_comfy_failure("queue_workflow", "Non-JSON provider response: " +
+                                        raw.decode("utf-8", errors="replace")[-16000:], job_id=job_id)
+        return {"error": "ComfyUI returned an invalid response", "diagnostic": diagnostic}
 
     if not isinstance(body, dict):
-        _log_comfy_failure("queue_workflow", "Unexpected provider response", job_id=job_id)
-        return {"error": "ComfyUI returned an invalid response"}
+        diagnostic = _log_comfy_failure("queue_workflow", "Unexpected provider response", job_id=job_id)
+        return {"error": "ComfyUI returned an invalid response", "diagnostic": diagnostic}
 
     if body.get("error") is not None:
-        _log_comfy_failure("queue_workflow", _format_comfy_prompt_error(body), job_id=job_id)
-        return {"error": "ComfyUI rejected the workflow"}
+        diagnostic = _log_comfy_failure("queue_workflow", _format_comfy_prompt_error(body), job_id=job_id,
+                                        code=_comfy_prompt_code(body))
+        return {"error": "ComfyUI rejected the workflow", "diagnostic": diagnostic}
 
     prompt_id = body.get("prompt_id")
     if not prompt_id:
-        _log_comfy_failure("queue_workflow", "Missing prompt ID", job_id=job_id)
-        return {"error": "ComfyUI returned an invalid response"}
+        diagnostic = _log_comfy_failure("queue_workflow", "Missing prompt ID", job_id=job_id)
+        return {"error": "ComfyUI returned an invalid response", "diagnostic": diagnostic}
 
     return {"prompt_id": prompt_id}
 
@@ -505,24 +547,33 @@ def handler(job):
     Returns:
         dict: A dictionary containing either an error message or a success status with generated images.
     """
-    job_input = job["input"]
+    try:
+        job_input = job["input"]
+        validated_data, error_message = validate_input(job_input)
+    except Exception as error:
+        diagnostic = _log_handler_error("input_validation", error, job.get("id"))
+        return {"error": "Invalid workflow input", "diagnostic": diagnostic}
 
     # Make sure that the input is valid
-    validated_data, error_message = validate_input(job_input)
     if error_message:
-        return {"error": error_message}
+        diagnostic = _log_comfy_failure("input_validation", job_id=job.get("id"))
+        return {"error": error_message, "diagnostic": diagnostic}
 
     # Extract validated data
     workflow = validated_data["workflow"]
     images = validated_data.get("images")
 
     # Make sure that the ComfyUI API is available
-    if not check_server(
+    available, server_error, server_status = check_server(
         f"http://{COMFY_HOST}",
         COMFY_API_AVAILABLE_MAX_RETRIES,
         COMFY_API_AVAILABLE_INTERVAL_MS,
-    ):
-        return {"error": "ComfyUI API is not reachable"}
+        with_failure=True,
+    )
+    if not available:
+        diagnostic = (_log_handler_error("comfy_api", server_error, job.get("id")) if server_error else
+                      _log_comfy_failure("comfy_api", "ComfyUI API is not reachable", server_status, job.get("id")))
+        return {"error": "ComfyUI API is not reachable", "diagnostic": diagnostic}
 
     # Upload images if they exist
     upload_result = upload_images(images, job["id"])
@@ -535,12 +586,12 @@ def handler(job):
         queued_workflow = queue_workflow(workflow, job["id"])
         if "error" in queued_workflow:
             err = queued_workflow["error"]
-            return {"error": err}
+            return {"error": err, "diagnostic": queued_workflow.get("diagnostic")}
         prompt_id = queued_workflow["prompt_id"]
         print(f"runpod-worker-comfy - queued workflow with ID {prompt_id}")
     except Exception as e:
-        _log_handler_error("queue_workflow", e, job["id"])
-        return {"error": "Could not queue the workflow"}
+        diagnostic = _log_handler_error("queue_workflow", e, job["id"])
+        return {"error": "Could not queue the workflow", "diagnostic": diagnostic}
 
     # Poll for completion
     print(f"runpod-worker-comfy - wait until image generation is complete")
@@ -554,25 +605,31 @@ def handler(job):
                 status_obj = entry.get("status")
                 if isinstance(status_obj, dict) and status_obj.get("status_str") == "error":
                     detail = _format_execution_status_error(status_obj)
-                    _log_comfy_failure("execute_workflow", detail, job_id=job["id"])
-                    return {"error": "ComfyUI workflow failed"}
+                    diagnostic = _log_comfy_failure("execute_workflow", detail, job_id=job["id"],
+                                                    code=_execution_error_code(status_obj))
+                    return {"error": "ComfyUI workflow failed", "diagnostic": diagnostic}
                 if entry.get("outputs"):
                     break
 
             time.sleep(COMFY_POLLING_INTERVAL_MS / 1000)
             retries += 1
         else:
-            return {"error": "Max retries reached while waiting for image generation"}
+            diagnostic = _log_comfy_failure("poll_workflow", "Max retries reached", job_id=job["id"])
+            return {"error": "Max retries reached while waiting for image generation", "diagnostic": diagnostic}
     except Exception as e:
-        _log_handler_error("poll_workflow", e, job["id"])
-        return {"error": "Could not check workflow progress"}
+        diagnostic = _log_handler_error("poll_workflow", e, job["id"])
+        return {"error": "Could not check workflow progress", "diagnostic": diagnostic}
 
     # Get the generated image and return it as URL in an AWS bucket or as base64
     try:
         images_result = process_output_images(history[prompt_id].get("outputs"), job["id"])
     except Exception as error:
-        _log_credential_failure("store_output_image", error, job["id"])
-        return {"error": "Could not save generated images"}
+        diagnostic = _log_credential_failure("store_output_image", error, job["id"])
+        return {"error": "Could not save generated images", "diagnostic": diagnostic}
+
+    if images_result.get("status") == "error":
+        diagnostic = _log_comfy_failure("process_output", images_result.get("message"), job_id=job["id"])
+        images_result["diagnostic"] = diagnostic
 
     result = {**images_result, "refresh_worker": REFRESH_WORKER}
 
