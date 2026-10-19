@@ -17,6 +17,8 @@ from io import BytesIO
 COMFY_API_AVAILABLE_INTERVAL_MS = 50
 # Maximum number of API check attempts
 COMFY_API_AVAILABLE_MAX_RETRIES = 500
+COMFY_API_AVAILABLE_MAX_WAIT_SECONDS = 30
+COMFY_LOCAL_API_TIMEOUT_SECONDS = 60
 # Time to wait between poll attempts in milliseconds
 COMFY_POLLING_INTERVAL_MS = int(os.environ.get("COMFY_POLLING_INTERVAL_MS", 250))
 # Maximum number of poll attempts
@@ -284,8 +286,10 @@ def check_server(url, retries=500, delay=50, *, with_failure=False):
 
     Args:
     - url (str): The URL to check
-    - retries (int, optional): The number of times to attempt connecting to the server. Default is 50
-    - delay (int, optional): The time in milliseconds to wait between retries. Default is 500
+    - retries (int, optional): The number of connection attempts. Default is 500.
+    - delay (int, optional): Milliseconds between attempts. Default is 50.
+
+    The readiness check stops after 30 seconds even if attempts remain.
 
     Returns:
     bool: True if the server is reachable within the given number of retries, otherwise False
@@ -293,9 +297,15 @@ def check_server(url, retries=500, delay=50, *, with_failure=False):
 
     last_error = None
     last_status = None
+    attempts = 0
+    deadline = time.monotonic() + COMFY_API_AVAILABLE_MAX_WAIT_SECONDS
     for _ in range(retries):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            response = requests.get(url)
+            attempts += 1
+            response = requests.get(url, timeout=(min(3, remaining), min(5, remaining)))
 
             # If the response status code is 200, the server is up and running
             if response.status_code == 200:
@@ -309,10 +319,12 @@ def check_server(url, retries=500, delay=50, *, with_failure=False):
             last_status = None
 
         # Wait for the specified delay before retrying
+        if time.monotonic() + delay / 1000 >= deadline:
+            break
         time.sleep(delay / 1000)
 
     print(
-        f"runpod-worker-comfy - Failed to connect to server at {url} after {retries} attempts."
+        f"runpod-worker-comfy - Failed to connect to server at {url} after {attempts} attempts."
     )
     return (False, last_error, last_status) if with_failure else False
 
@@ -344,7 +356,7 @@ def upload_images(images, job_id=None):
                 "image": (image["name"], BytesIO(blob), "image/png"),
                 "overwrite": (None, "true"),
             }
-            response = requests.post(f"http://{COMFY_HOST}/upload/image", files=files)
+            response = requests.post(f"http://{COMFY_HOST}/upload/image", files=files, timeout=(3, 120))
             if response.status_code != 200:
                 last_diagnostic = _log_comfy_failure("upload_image", "Image upload rejected", response.status_code, job_id)
                 upload_errors.append("Image upload failed")
@@ -385,7 +397,7 @@ def queue_workflow(workflow, job_id=None):
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=COMFY_LOCAL_API_TIMEOUT_SECONDS) as response:
             raw = response.read()
     except urllib.error.HTTPError as e:
         raw = e.read() if e.fp else b"{}"
@@ -436,7 +448,9 @@ def get_history(prompt_id):
     Returns:
         dict: The history of the prompt, containing all the processing steps and results
     """
-    with urllib.request.urlopen(f"http://{COMFY_HOST}/history/{prompt_id}") as response:
+    with urllib.request.urlopen(
+        f"http://{COMFY_HOST}/history/{prompt_id}", timeout=COMFY_LOCAL_API_TIMEOUT_SECONDS
+    ) as response:
         return json.loads(response.read())
 
 

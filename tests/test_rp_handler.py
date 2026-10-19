@@ -26,6 +26,23 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(result["error"], "ComfyUI rejected the workflow")
         self.assertEqual(result["diagnostic"], diagnostic)
 
+    def test_handler_returns_generic_errors_when_local_api_times_out(self):
+        job = {"id": "job_123", "input": {"workflow": {"1": {}}}}
+        with patch.object(rp_handler, "check_server", return_value=(True, None, None)), \
+             patch.object(rp_handler, "upload_images", return_value={"status": "success"}), \
+             patch.object(rp_handler, "queue_workflow", side_effect=TimeoutError("ComfyUI stalled")):
+            queue_result = rp_handler.handler(job)
+        self.assertEqual(queue_result["error"], "Could not queue the workflow")
+        self.assertEqual(queue_result["diagnostic"]["stage"], "queue_workflow")
+
+        with patch.object(rp_handler, "check_server", return_value=(True, None, None)), \
+             patch.object(rp_handler, "upload_images", return_value={"status": "success"}), \
+             patch.object(rp_handler, "queue_workflow", return_value={"prompt_id": "123"}), \
+             patch.object(rp_handler, "get_history", side_effect=TimeoutError("ComfyUI stalled")):
+            history_result = rp_handler.handler(job)
+        self.assertEqual(history_result["error"], "Could not check workflow progress")
+        self.assertEqual(history_result["diagnostic"]["stage"], "poll_workflow")
+
     def test_handler_error_keeps_bounded_diagnostics(self):
         try:
             raise RuntimeError("queue failed")
@@ -181,6 +198,11 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         result = rp_handler.check_server("http://127.0.0.1:8188", 1, 50)
         self.assertTrue(result)
+        connect_timeout, read_timeout = mock_requests.call_args.kwargs["timeout"]
+        self.assertGreater(connect_timeout, 0)
+        self.assertLessEqual(connect_timeout, 3)
+        self.assertGreater(read_timeout, 0)
+        self.assertLessEqual(read_timeout, 5)
 
     @patch("rp_handler.requests.get")
     def test_check_server_server_down(self, mock_requests):
@@ -192,6 +214,28 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertIsInstance(error, rp_handler.requests.RequestException)
         self.assertIsNone(status)
 
+    @patch("rp_handler.requests.get")
+    def test_check_server_stops_at_deadline(self, mock_requests):
+        mock_requests.side_effect = rp_handler.requests.Timeout("ComfyUI stalled")
+        with patch.object(rp_handler.time, "monotonic", side_effect=[0, 0, 31]):
+            available, error, status = rp_handler.check_server(
+                "http://127.0.0.1:8188", with_failure=True
+            )
+        self.assertFalse(available)
+        self.assertIsInstance(error, rp_handler.requests.Timeout)
+        self.assertIsNone(status)
+        mock_requests.assert_called_once()
+
+    @patch("rp_handler.requests.get")
+    def test_check_server_timeout_is_reported(self, mock_requests):
+        mock_requests.side_effect = rp_handler.requests.Timeout("ComfyUI stalled")
+        available, error, status = rp_handler.check_server(
+            "http://127.0.0.1:8188", retries=1, delay=0, with_failure=True
+        )
+        self.assertFalse(available)
+        self.assertIsInstance(error, rp_handler.requests.Timeout)
+        self.assertIsNone(status)
+
     @patch("rp_handler.urllib.request.urlopen")
     def test_queue_prompt(self, mock_urlopen):
         mock_cm = MagicMock()
@@ -201,6 +245,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         mock_urlopen.return_value = mock_cm
         result = rp_handler.queue_workflow({"prompt": "test"})
         self.assertEqual(result, {"prompt_id": "123"})
+        self.assertEqual(mock_urlopen.call_args.kwargs["timeout"], 60)
 
     @patch("rp_handler.urllib.request.urlopen")
     def test_queue_prompt_returns_error_when_comfy_reports_invalid_prompt(self, mock_urlopen):
@@ -265,7 +310,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         # Assertions
         self.assertEqual(result, {"key": "value"})
-        mock_urlopen.assert_called_with("http://127.0.0.1:8188/history/123")
+        mock_urlopen.assert_called_with("http://127.0.0.1:8188/history/123", timeout=60)
 
     @patch("builtins.open", new_callable=mock_open, read_data=b"test")
     def test_base64_encode(self, mock_file):
@@ -369,6 +414,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         self.assertEqual(len(responses), 3)
         self.assertEqual(responses["status"], "success")
+        self.assertEqual(mock_post.call_args.kwargs["timeout"], (3, 120))
 
     @patch("rp_handler.requests.post")
     def test_upload_images_failed(self, mock_post):
@@ -389,3 +435,14 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(responses["diagnostic"]["status"], 400)
         self.assertEqual(responses["diagnostic"]["provider_message"], "Image upload rejected")
         self.assertNotIn("private prompt", json.dumps(responses))
+
+    @patch("rp_handler.requests.post")
+    def test_upload_images_timeout_returns_failure(self, mock_post):
+        mock_post.side_effect = rp_handler.requests.Timeout("ComfyUI stalled")
+        images = [{"name": "test_image.png", "image": base64.b64encode(b"image").decode()}]
+
+        result = rp_handler.upload_images(images)
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["diagnostic"]["stage"], "upload_image")
+        self.assertEqual(mock_post.call_args.kwargs["timeout"], (3, 120))
