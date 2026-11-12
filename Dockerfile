@@ -10,7 +10,8 @@
 # For sd3 / flux1-dev, pass HUGGINGFACE_ACCESS_TOKEN as a BuildKit secret.
 
 # Stage 1: Base image with common dependencies
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 AS base
+# Keep this CUDA version aligned with the PyTorch wheel index used in the PyTorch install step.
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04 AS base
 
 # When true, installs ComfyUI-MVAdapter + Impact Pack (character-sheet workflows).
 ARG WITH_CHARACTER_SHEET_NODES=true
@@ -49,8 +50,14 @@ RUN apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 # Install comfy-cli
 RUN pip install comfy-cli
 
-# Install ComfyUI
-RUN /usr/bin/yes | comfy --workspace /comfyui install --cuda-version 11.8 --nvidia --version 0.2.7
+# Install a pinned PyTorch before ComfyUI. comfy-cli otherwise installs the newest torch on the
+# selected CUDA index, which is not validated with ComfyUI 0.2.7 and the pinned custom nodes.
+# When changing CUDA, choose a torch release that the matching index publishes for Python 3.10.
+RUN pip install --no-cache-dir torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 \
+    --index-url https://download.pytorch.org/whl/cu126
+
+# Install ComfyUI. Its unpinned torch requirements are already satisfied by the pinned install.
+RUN /usr/bin/yes | comfy --workspace /comfyui install --nvidia --skip-torch-or-directml --version 0.2.7
 
 # Change working directory to ComfyUI
 WORKDIR /comfyui
